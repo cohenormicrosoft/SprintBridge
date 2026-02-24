@@ -1,0 +1,68 @@
+{
+  "name": "sprintbridge",
+  "displayName": "SprintBridge",
+  "description": "AI-powered Azure DevOps Boards integration for VS Code via Copilot Chat",
+  "version": "0.1.0",
+  "publisher": "sprintbridge",
+  "engines": {
+    "vscode": "^1.93.0"
+  },
+  "categories": [
+    "Chat"
+  ],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "enabledApiProposals": [],
+  "contributes": {
+    "chatParticipants": [
+      {
+        "id": "sprintbridge.chat",
+        "fullName": "SprintBridge",
+        "name": "sprintbridge",
+        "description": "Manage Azure DevOps work items, boards, and sprints using natural language",
+        "isSticky": true
+      }
+    ],
+    "commands": [
+      {
+        "command": "sprintbridge.configure",
+        "title": "SprintBridge: Configure ADO Connection"
+      },
+      {
+        "command": "sprintbridge.signIn",
+        "title": "SprintBridge: Sign In to Azure DevOps"
+      }
+    ],
+    "configuration": {
+      "title": "SprintBridge",
+      "properties": {
+        "sprintbridge.organization": {
+          "type": "string",
+          "default": "",
+          "description": "Azure DevOps organization name (e.g., 'msazure')"
+        },
+        "sprintbridge.project": {
+          "type": "string",
+          "default": "",
+          "description": "Azure DevOps project name (e.g., 'One')"
+        },
+        "sprintbridge.backendPort": {
+          "type": "number",
+          "default": 5059,
+          "description": "Port for the SprintBridge backend service"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.93.0",
+    "typescript": "^5.3.0"
+  }
+}
