@@ -1,0 +1,547 @@
+export function getWebviewHtml(nonce: string, cspSource: string): string {
+  return /*html*/ `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'none'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SprintBridge</title>
+  <style nonce="${nonce}">
+    :root {
+      --bg: var(--vscode-sideBar-background);
+      --fg: var(--vscode-sideBar-foreground, var(--vscode-foreground));
+      --input-bg: var(--vscode-input-background);
+      --input-fg: var(--vscode-input-foreground);
+      --input-border: var(--vscode-input-border, transparent);
+      --btn-bg: var(--vscode-button-background);
+      --btn-fg: var(--vscode-button-foreground);
+      --btn-hover: var(--vscode-button-hoverBackground);
+      --btn-secondary-bg: var(--vscode-button-secondaryBackground);
+      --btn-secondary-fg: var(--vscode-button-secondaryForeground);
+      --border: var(--vscode-panel-border, var(--vscode-widget-border, #444));
+      --badge-bg: var(--vscode-badge-background);
+      --badge-fg: var(--vscode-badge-foreground);
+      --list-hover: var(--vscode-list-hoverBackground);
+      --list-active: var(--vscode-list-activeSelectionBackground);
+      --list-active-fg: var(--vscode-list-activeSelectionForeground);
+      --error: var(--vscode-errorForeground, #f44);
+      --link: var(--vscode-textLink-foreground);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); color: var(--fg); background: var(--bg); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+    /* Tabs */
+    .tabs { display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+    .tab { flex: 1; padding: 8px 4px; text-align: center; cursor: pointer; font-size: 12px; border: none; background: transparent; color: var(--fg); opacity: 0.7; border-bottom: 2px solid transparent; }
+    .tab:hover { opacity: 1; background: var(--list-hover); }
+    .tab.active { opacity: 1; border-bottom-color: var(--btn-bg); }
+
+    /* Panels */
+    .panel { flex: 1; overflow-y: auto; display: none; flex-direction: column; }
+    .panel.active { display: flex; }
+    .panel-content { padding: 10px; flex: 1; overflow-y: auto; }
+
+    /* Filters */
+    .filters { padding: 8px 10px; border-bottom: 1px solid var(--border); display: flex; gap: 6px; flex-wrap: wrap; flex-shrink: 0; }
+    .filter-select { background: var(--input-bg); color: var(--input-fg); border: 1px solid var(--input-border); padding: 4px 6px; font-size: 11px; border-radius: 3px; }
+
+    /* Work item list */
+    .work-item { padding: 8px 10px; border-bottom: 1px solid var(--border); cursor: pointer; }
+    .work-item:hover { background: var(--list-hover); }
+    .work-item-header { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
+    .work-item-id { font-size: 11px; opacity: 0.7; }
+    .work-item-title { font-size: 13px; font-weight: 500; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .work-item-meta { display: flex; gap: 8px; font-size: 11px; opacity: 0.7; }
+    .type-badge { font-size: 10px; padding: 1px 5px; border-radius: 3px; font-weight: 600; }
+    .type-bug { background: #cd3232; color: #fff; }
+    .type-task { background: #f2cb1d; color: #000; }
+    .type-userstory { background: #009ccc; color: #fff; }
+    .type-feature { background: #773b93; color: #fff; }
+    .type-epic { background: #ff7b00; color: #fff; }
+    .state-badge { padding: 1px 5px; border-radius: 3px; font-size: 10px; background: var(--badge-bg); color: var(--badge-fg); }
+
+    /* Detail view */
+    .detail-view { padding: 10px; }
+    .detail-back { background: none; border: none; color: var(--link); cursor: pointer; font-size: 12px; margin-bottom: 8px; padding: 0; }
+    .detail-back:hover { text-decoration: underline; }
+    .detail-title { font-size: 15px; font-weight: 600; margin-bottom: 10px; }
+    .detail-field { margin-bottom: 8px; }
+    .detail-field label { display: block; font-size: 11px; opacity: 0.7; margin-bottom: 2px; }
+    .detail-field .value { font-size: 13px; }
+    .detail-actions { display: flex; gap: 6px; margin-top: 12px; }
+
+    /* Forms */
+    .form-group { margin-bottom: 12px; }
+    .form-group label { display: block; font-size: 12px; margin-bottom: 4px; font-weight: 500; }
+    .form-input, .form-select, .form-textarea { width: 100%; background: var(--input-bg); color: var(--input-fg); border: 1px solid var(--input-border); padding: 6px 8px; font-size: 13px; border-radius: 3px; font-family: inherit; }
+    .form-textarea { min-height: 80px; resize: vertical; }
+    .form-select { cursor: pointer; }
+
+    /* Buttons */
+    .btn { padding: 6px 14px; border: none; border-radius: 3px; cursor: pointer; font-size: 12px; font-family: inherit; }
+    .btn-primary { background: var(--btn-bg); color: var(--btn-fg); }
+    .btn-primary:hover { background: var(--btn-hover); }
+    .btn-secondary { background: var(--btn-secondary-bg); color: var(--btn-secondary-fg); }
+    .btn-danger { background: #cd3232; color: #fff; }
+    .btn-danger:hover { background: #e04444; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* Chat */
+    .chat-messages { flex: 1; overflow-y: auto; padding: 10px; }
+    .chat-msg { margin-bottom: 10px; }
+    .chat-msg-user { text-align: right; }
+    .chat-msg-user .chat-bubble { background: var(--btn-bg); color: var(--btn-fg); display: inline-block; padding: 6px 10px; border-radius: 10px 10px 2px 10px; max-width: 90%; text-align: left; font-size: 13px; }
+    .chat-msg-ai .chat-bubble { background: var(--input-bg); display: inline-block; padding: 6px 10px; border-radius: 10px 10px 10px 2px; max-width: 90%; text-align: left; font-size: 13px; white-space: pre-wrap; }
+    .chat-input-row { display: flex; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--border); flex-shrink: 0; }
+    .chat-input { flex: 1; background: var(--input-bg); color: var(--input-fg); border: 1px solid var(--input-border); padding: 6px 8px; font-size: 13px; border-radius: 3px; font-family: inherit; }
+
+    /* Status messages */
+    .empty-state { text-align: center; padding: 30px 15px; opacity: 0.6; font-size: 13px; }
+    .loading { text-align: center; padding: 20px; opacity: 0.6; }
+    .error-msg { color: var(--error); padding: 8px 10px; font-size: 12px; }
+    .success-msg { color: #4ec94e; padding: 8px 10px; font-size: 12px; }
+
+    /* Edit mode */
+    .edit-form { padding: 10px; }
+    .edit-form .form-group { margin-bottom: 10px; }
+    .desc-html { font-size: 12px; line-height: 1.5; }
+    .desc-html img { max-width: 100%; }
+    .desc-html ul, .desc-html ol { padding-left: 20px; }
+
+    /* Setup overlay */
+    .setup-overlay { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 20px; }
+    .setup-overlay h2 { font-size: 16px; margin-bottom: 6px; }
+    .setup-overlay p { font-size: 12px; opacity: 0.7; margin-bottom: 16px; }
+    .setup-overlay .form-group { margin-bottom: 12px; }
+    .setup-overlay .setup-icon { text-align: center; font-size: 32px; margin-bottom: 10px; }
+  </style>
+</head>
+<body>
+  <!-- Setup screen (shown when not configured) -->
+  <div id="setup-screen" style="display:none;">
+    <div class="setup-overlay">
+      <div class="setup-icon">🌉</div>
+      <h2>Welcome to SprintBridge</h2>
+      <p>Connect to your Azure DevOps organization to get started.</p>
+      <div class="form-group">
+        <label>Organization *</label>
+        <input class="form-input" id="setup-org" placeholder="e.g. msazure" />
+      </div>
+      <div class="form-group">
+        <label>Project *</label>
+        <input class="form-input" id="setup-project" placeholder="e.g. One" />
+      </div>
+      <div class="form-group">
+        <label>Area Path</label>
+        <input class="form-input" id="setup-areapath" placeholder="e.g. One\\Rome\\CloudNativeSec\\MyTeam" />
+      </div>
+      <div id="setup-status"></div>
+      <button class="btn btn-primary" id="setup-connect" style="width:100%;margin-top:4px;">Connect</button>
+    </div>
+  </div>
+
+  <!-- Main app (hidden until configured) -->
+  <div id="main-app">
+  <div class="tabs">
+    <button class="tab active" data-tab="workitems">Work Items</button>
+    <button class="tab" data-tab="create">Create</button>
+    <button class="tab" data-tab="chat">AI Chat</button>
+    <button class="tab" data-tab="settings">⚙</button>
+  </div>
+
+  <!-- Work Items Panel -->
+  <div class="panel active" id="panel-workitems">
+    <div class="filters">
+      <select class="filter-select" id="filter-assignee">
+        <option value="team">Team area</option>
+        <option value="me">Assigned to me</option>
+      </select>
+      <select class="filter-select" id="filter-type">
+        <option value="">All types</option>
+        <option value="Bug">Bug</option>
+        <option value="Task">Task</option>
+        <option value="User Story">User Story</option>
+        <option value="Feature">Feature</option>
+        <option value="Epic">Epic</option>
+      </select>
+      <select class="filter-select" id="filter-state">
+        <option value="">All states</option>
+        <option value="New">New</option>
+        <option value="Active">Active</option>
+        <option value="Resolved">Resolved</option>
+        <option value="Closed">Closed</option>
+      </select>
+    </div>
+    <div class="panel-content" id="workitems-list">
+      <div class="empty-state">Click a filter or sign in to load work items.</div>
+    </div>
+    <!-- Detail / Edit view (hidden by default) -->
+    <div class="panel-content" id="workitem-detail" style="display:none;"></div>
+  </div>
+
+  <!-- Create Panel -->
+  <div class="panel" id="panel-create">
+    <div class="panel-content">
+      <div id="create-status"></div>
+      <div class="form-group">
+        <label>Type</label>
+        <select class="form-select" id="create-type">
+          <option value="Task">Task</option>
+          <option value="Bug">Bug</option>
+          <option value="User Story">User Story</option>
+          <option value="Feature">Feature</option>
+          <option value="Epic">Epic</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Title *</label>
+        <input class="form-input" id="create-title" placeholder="Enter work item title" />
+      </div>
+      <div class="form-group">
+        <label>Description</label>
+        <textarea class="form-textarea" id="create-desc" placeholder="Describe the work item..."></textarea>
+      </div>
+      <div class="form-group">
+        <label>Assigned To</label>
+        <input class="form-input" id="create-assigned" placeholder="e.g. user@example.com" />
+      </div>
+      <div class="form-group">
+        <label>Priority</label>
+        <select class="form-select" id="create-priority">
+          <option value="">Not set</option>
+          <option value="1">1 - Critical</option>
+          <option value="2">2 - High</option>
+          <option value="3">3 - Medium</option>
+          <option value="4">4 - Low</option>
+        </select>
+      </div>
+      <button class="btn btn-primary" id="create-submit">Create Work Item</button>
+    </div>
+  </div>
+
+  <!-- AI Chat Panel -->
+  <div class="panel" id="panel-chat">
+    <div class="chat-messages" id="chat-messages">
+      <div class="chat-msg chat-msg-ai">
+        <div class="chat-bubble">Hi! I can help you manage your Azure DevOps work items. Try things like:\n\n• "Show my active bugs"\n• "Create a task for updating docs"\n• "Update item 12345 state to Resolved"</div>
+      </div>
+    </div>
+    <div class="chat-input-row">
+      <input class="chat-input" id="chat-input" placeholder="Ask me anything about your work items..." />
+      <button class="btn btn-primary" id="chat-send">Send</button>
+    </div>
+  </div>
+
+  <!-- Settings Panel -->
+  <div class="panel" id="panel-settings">
+    <div class="panel-content">
+      <h3 style="margin-bottom:12px;font-size:14px;">Settings</h3>
+      <div class="form-group">
+        <label>Organization</label>
+        <input class="form-input" id="settings-org" placeholder="e.g. msazure" />
+      </div>
+      <div class="form-group">
+        <label>Project</label>
+        <input class="form-input" id="settings-project" placeholder="e.g. One" />
+      </div>
+      <div class="form-group">
+        <label>Area Path</label>
+        <input class="form-input" id="settings-areapath" placeholder="e.g. One\\Rome\\CloudNativeSec\\MyTeam" />
+      </div>
+      <div id="settings-status"></div>
+      <button class="btn btn-primary" id="settings-save" style="margin-top:4px;">Save</button>
+      <hr style="margin:16px 0;border:none;border-top:1px solid var(--border);">
+      <button class="btn btn-secondary" id="settings-signin" style="width:100%;">Sign In to Azure DevOps</button>
+    </div>
+  </div>
+
+  </div><!-- /main-app -->
+
+  <script nonce="${nonce}">
+    const vscode = acquireVsCodeApi();
+    const state = vscode.getState() || { tab: 'workitems', chatHistory: [] };
+
+    // --- Setup / Config ---
+    const setupScreen = document.getElementById('setup-screen');
+    const mainApp = document.getElementById('main-app');
+
+    // Ask extension for current config on load
+    vscode.postMessage({ command: 'getConfig' });
+
+    function showSetup() {
+      setupScreen.style.display = 'flex';
+      mainApp.style.display = 'none';
+    }
+    function showMain(org, project, areaPath) {
+      setupScreen.style.display = 'none';
+      mainApp.style.display = '';
+      if (org) document.getElementById('settings-org').value = org;
+      if (project) document.getElementById('settings-project').value = project;
+      if (areaPath) document.getElementById('settings-areapath').value = areaPath;
+      loadWorkItems();
+    }
+
+    document.getElementById('setup-connect').addEventListener('click', () => {
+      const org = document.getElementById('setup-org').value.trim();
+      const project = document.getElementById('setup-project').value.trim();
+      const areaPath = document.getElementById('setup-areapath').value.trim();
+      if (!org || !project) {
+        document.getElementById('setup-status').innerHTML = '<div class="error-msg">Organization and Project are required.</div>';
+        return;
+      }
+      vscode.postMessage({ command: 'saveConfig', organization: org, project: project, areaPath: areaPath });
+    });
+
+    document.getElementById('settings-save').addEventListener('click', () => {
+      const org = document.getElementById('settings-org').value.trim();
+      const project = document.getElementById('settings-project').value.trim();
+      const areaPath = document.getElementById('settings-areapath').value.trim();
+      if (!org || !project) {
+        document.getElementById('settings-status').innerHTML = '<div class="error-msg">Organization and Project are required.</div>';
+        return;
+      }
+      vscode.postMessage({ command: 'saveConfig', organization: org, project: project, areaPath: areaPath });
+    });
+
+    document.getElementById('settings-signin').addEventListener('click', () => {
+      vscode.postMessage({ command: 'signIn' });
+    });
+
+    // Tab switching
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+        tab.classList.add('active');
+        const panelId = 'panel-' + tab.dataset.tab;
+        document.getElementById(panelId).classList.add('active');
+        state.tab = tab.dataset.tab;
+        vscode.setState(state);
+
+        if (tab.dataset.tab === 'workitems') {
+          loadWorkItems();
+        }
+      });
+    });
+
+    // --- Work Items ---
+    function loadWorkItems() {
+      const assignee = document.getElementById('filter-assignee').value;
+      const type = document.getElementById('filter-type').value;
+      const stateFilter = document.getElementById('filter-state').value;
+      document.getElementById('workitems-list').innerHTML = '<div class="loading">Loading work items...</div>';
+      document.getElementById('workitems-list').style.display = '';
+      document.getElementById('workitem-detail').style.display = 'none';
+      vscode.postMessage({ command: 'queryWorkItems', assignee, type, state: stateFilter });
+    }
+
+    document.getElementById('filter-assignee').addEventListener('change', loadWorkItems);
+    document.getElementById('filter-type').addEventListener('change', loadWorkItems);
+    document.getElementById('filter-state').addEventListener('change', loadWorkItems);
+
+    function renderWorkItems(items) {
+      const container = document.getElementById('workitems-list');
+      if (!items || items.length === 0) {
+        container.innerHTML = '<div class="empty-state">No work items found.</div>';
+        return;
+      }
+      container.innerHTML = items.map(item => {
+        const typeClass = 'type-' + (item.type || '').toLowerCase().replace(/\\s+/g, '');
+        return '<div class="work-item" data-id="' + item.id + '">' +
+          '<div class="work-item-header">' +
+            '<span class="type-badge ' + typeClass + '">' + esc(item.type) + '</span>' +
+            '<span class="work-item-id">#' + item.id + '</span>' +
+            '<span class="work-item-title">' + esc(item.title) + '</span>' +
+          '</div>' +
+          '<div class="work-item-meta">' +
+            '<span class="state-badge">' + esc(item.state || 'N/A') + '</span>' +
+            '<span>' + esc(item.assignedTo || 'Unassigned') + '</span>' +
+          '</div>' +
+        '</div>';
+      }).join('');
+
+      container.querySelectorAll('.work-item').forEach(el => {
+        el.addEventListener('click', () => {
+          vscode.postMessage({ command: 'getWorkItem', id: parseInt(el.dataset.id) });
+        });
+      });
+    }
+
+    function showDetail(item) {
+      document.getElementById('workitems-list').style.display = 'none';
+      const detail = document.getElementById('workitem-detail');
+      detail.style.display = '';
+      const typeClass = 'type-' + (item.type || '').toLowerCase().replace(/\\s+/g, '');
+      detail.innerHTML =
+        '<button class="detail-back">&larr; Back to list</button>' +
+        '<div class="detail-title"><span class="type-badge ' + typeClass + '">' + esc(item.type) + '</span> #' + item.id + ': ' + esc(item.title) + '</div>' +
+        '<div class="detail-field"><label>State</label><div class="value">' + esc(item.state || 'N/A') + '</div></div>' +
+        '<div class="detail-field"><label>Assigned To</label><div class="value">' + esc(item.assignedTo || 'Unassigned') + '</div></div>' +
+        '<div class="detail-field"><label>Priority</label><div class="value">' + (item.priority || 'N/A') + '</div></div>' +
+        '<div class="detail-field"><label>Area Path</label><div class="value">' + esc(item.areaPath || 'N/A') + '</div></div>' +
+        '<div class="detail-field"><label>Iteration</label><div class="value">' + esc(item.iterationPath || 'N/A') + '</div></div>' +
+        (item.description ? '<div class="detail-field"><label>Description</label><div class="value desc-html">' + sanitizeHtml(item.description) + '</div></div>' : '') +
+        '<div class="detail-actions">' +
+          '<button class="btn btn-primary" id="detail-edit">Edit</button>' +
+          '<button class="btn btn-danger" id="detail-delete">Delete</button>' +
+        '</div>';
+
+      detail.querySelector('.detail-back').addEventListener('click', () => {
+        detail.style.display = 'none';
+        document.getElementById('workitems-list').style.display = '';
+      });
+
+      detail.querySelector('#detail-edit').addEventListener('click', () => showEditForm(item));
+      detail.querySelector('#detail-delete').addEventListener('click', () => {
+        vscode.postMessage({ command: 'deleteWorkItem', id: item.id });
+      });
+    }
+
+    function showEditForm(item) {
+      const detail = document.getElementById('workitem-detail');
+      detail.innerHTML =
+        '<button class="detail-back">&larr; Back</button>' +
+        '<div class="edit-form">' +
+          '<div id="edit-status"></div>' +
+          '<div class="form-group"><label>Title</label><input class="form-input" id="edit-title" value="' + escAttr(item.title) + '" /></div>' +
+          '<div class="form-group"><label>State</label><select class="form-select" id="edit-state">' +
+            ['New','Active','Resolved','Closed'].map(s => '<option' + (s === item.state ? ' selected' : '') + '>' + s + '</option>').join('') +
+          '</select></div>' +
+          '<div class="form-group"><label>Assigned To</label><input class="form-input" id="edit-assigned" value="' + escAttr(item.assignedTo || '') + '" /></div>' +
+          '<div class="form-group"><label>Priority</label><select class="form-select" id="edit-priority">' +
+            '<option value="">Not set</option>' +
+            [1,2,3,4].map(p => '<option value="' + p + '"' + (p === item.priority ? ' selected' : '') + '>' + p + '</option>').join('') +
+          '</select></div>' +
+          '<div class="form-group"><label>Description</label><textarea class="form-textarea" id="edit-desc">' + esc(item.description || '') + '</textarea></div>' +
+          '<button class="btn btn-primary" id="edit-save">Save Changes</button>' +
+        '</div>';
+
+      detail.querySelector('.detail-back').addEventListener('click', () => showDetail(item));
+      detail.querySelector('#edit-save').addEventListener('click', () => {
+        const updates = {
+          title: document.getElementById('edit-title').value,
+          state: document.getElementById('edit-state').value,
+          assignedTo: document.getElementById('edit-assigned').value || undefined,
+          priority: document.getElementById('edit-priority').value ? parseInt(document.getElementById('edit-priority').value) : undefined,
+          description: document.getElementById('edit-desc').value || undefined
+        };
+        vscode.postMessage({ command: 'updateWorkItem', id: item.id, updates });
+      });
+    }
+
+    // --- Create ---
+    document.getElementById('create-submit').addEventListener('click', () => {
+      const title = document.getElementById('create-title').value.trim();
+      if (!title) {
+        document.getElementById('create-status').innerHTML = '<div class="error-msg">Title is required.</div>';
+        return;
+      }
+      document.getElementById('create-submit').disabled = true;
+      document.getElementById('create-status').innerHTML = '<div class="loading">Creating...</div>';
+      vscode.postMessage({
+        command: 'createWorkItem',
+        type: document.getElementById('create-type').value,
+        title,
+        description: document.getElementById('create-desc').value || undefined,
+        assignedTo: document.getElementById('create-assigned').value || undefined,
+        priority: document.getElementById('create-priority').value ? parseInt(document.getElementById('create-priority').value) : undefined
+      });
+    });
+
+    // --- Chat ---
+    const chatMessages = document.getElementById('chat-messages');
+    const chatInput = document.getElementById('chat-input');
+
+    function addChatMessage(role, text) {
+      const div = document.createElement('div');
+      div.className = 'chat-msg chat-msg-' + role;
+      const bubble = document.createElement('div');
+      bubble.className = 'chat-bubble';
+      bubble.textContent = text;
+      div.appendChild(bubble);
+      chatMessages.appendChild(div);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    function sendChat() {
+      const text = chatInput.value.trim();
+      if (!text) return;
+      addChatMessage('user', text);
+      chatInput.value = '';
+      vscode.postMessage({ command: 'chatMessage', text });
+    }
+
+    document.getElementById('chat-send').addEventListener('click', sendChat);
+    chatInput.addEventListener('keydown', e => { if (e.key === 'Enter') sendChat(); });
+
+    // --- Message handler ---
+    window.addEventListener('message', event => {
+      const msg = event.data;
+      switch (msg.command) {
+        case 'configLoaded':
+          if (msg.organization && msg.project) {
+            showMain(msg.organization, msg.project, msg.areaPath);
+          } else {
+            showSetup();
+          }
+          break;
+        case 'configSaved':
+          document.getElementById('settings-status').innerHTML = '<div class="success-msg">Settings saved!</div>';
+          showMain(msg.organization, msg.project, msg.areaPath);
+          break;
+        case 'workItemsLoaded':
+          renderWorkItems(msg.items);
+          break;
+        case 'workItemLoaded':
+          showDetail(msg.item);
+          break;
+        case 'workItemCreated':
+          document.getElementById('create-submit').disabled = false;
+          document.getElementById('create-status').innerHTML = '<div class="success-msg">\\u2705 Created #' + msg.item.id + ': ' + esc(msg.item.title) + '</div>';
+          document.getElementById('create-title').value = '';
+          document.getElementById('create-desc').value = '';
+          document.getElementById('create-assigned').value = '';
+          document.getElementById('create-priority').value = '';
+          break;
+        case 'workItemUpdated':
+          document.getElementById('edit-status')?.remove;
+          showDetail(msg.item);
+          break;
+        case 'workItemDeleted':
+          loadWorkItems();
+          break;
+        case 'chatResponse':
+          addChatMessage('ai', msg.text);
+          break;
+        case 'error':
+          // Show error in appropriate place
+          if (msg.context === 'create') {
+            document.getElementById('create-submit').disabled = false;
+            document.getElementById('create-status').innerHTML = '<div class="error-msg">' + esc(msg.message) + '</div>';
+          } else if (msg.context === 'edit') {
+            const es = document.getElementById('edit-status');
+            if (es) es.innerHTML = '<div class="error-msg">' + esc(msg.message) + '</div>';
+          } else if (msg.context === 'chat') {
+            addChatMessage('ai', '\\u274c ' + msg.message);
+          } else {
+            document.getElementById('workitems-list').innerHTML = '<div class="error-msg">' + esc(msg.message) + '</div>';
+          }
+          break;
+      }
+    });
+
+    function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+    function escAttr(s) { return (s || '').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
+    function sanitizeHtml(html) {
+      if (!html) return '';
+      const div = document.createElement('div');
+      div.innerHTML = html;
+      // Remove script/style tags
+      div.querySelectorAll('script,style,iframe,object,embed').forEach(el => el.remove());
+      return div.innerHTML;
+    }
+  </script>
+</body>
+</html>`;
+}

@@ -3,6 +3,7 @@ import { BackendClient } from "./backendClient";
 import { AuthProvider } from "./auth";
 import { SidecarManager } from "./sidecar";
 import { registerChatParticipant } from "./chatParticipant";
+import { SidebarProvider } from "./sidebarProvider";
 
 let sidecar: SidecarManager;
 
@@ -36,6 +37,19 @@ export async function activate(context: vscode.ExtensionContext) {
     authProvider
   );
   context.subscriptions.push(chatParticipant);
+
+  // Register sidebar webview
+  const sidebarProvider = new SidebarProvider(
+    context.extensionUri,
+    backendClient,
+    authProvider
+  );
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider(
+      SidebarProvider.viewId,
+      sidebarProvider
+    )
+  );
 
   // Register commands
   context.subscriptions.push(

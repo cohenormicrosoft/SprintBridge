@@ -10,10 +10,30 @@
   "categories": [
     "Chat"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "*"
+  ],
   "main": "./out/extension.js",
   "enabledApiProposals": [],
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "sprintbridge-sidebar",
+          "title": "SprintBridge",
+          "icon": "media/sprintbridge.svg"
+        }
+      ]
+    },
+    "views": {
+      "sprintbridge-sidebar": [
+        {
+          "type": "webview",
+          "id": "sprintbridge.sidebarView",
+          "name": "SprintBridge"
+        }
+      ]
+    },
     "chatParticipants": [
       {
         "id": "sprintbridge.chat",
@@ -31,6 +51,11 @@
       {
         "command": "sprintbridge.signIn",
         "title": "SprintBridge: Sign In to Azure DevOps"
+      },
+      {
+        "command": "sprintbridge.refreshWorkItems",
+        "title": "SprintBridge: Refresh Work Items",
+        "icon": "$(refresh)"
       }
     ],
     "configuration": {
@@ -50,6 +75,11 @@
           "type": "number",
           "default": 5059,
           "description": "Port for the SprintBridge backend service"
+        },
+        "sprintbridge.areaPath": {
+          "type": "string",
+          "default": "",
+          "description": "Azure DevOps area path to filter work items (e.g., 'One\\\\Rome\\\\CloudNativeSec')"
         }
       }
     }
