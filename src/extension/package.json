@@ -1,0 +1,104 @@
+{
+  "name": "sprintbridge",
+  "displayName": "SprintBridge",
+  "description": "Manage Azure DevOps work items with AI — browse, create, edit, and query your backlog without leaving VS Code",
+  "version": "0.1.2",
+  "publisher": "OrCohen",
+  "icon": "media/sprintbridge.png",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cohenor_microsoft/SprintBridge"
+  },
+  "engines": {
+    "vscode": "^1.93.0"
+  },
+  "categories": [
+    "Chat"
+  ],
+  "activationEvents": [
+    "onView:sprintbridge.sidebarView"
+  ],
+  "main": "./out/extension.js",
+  "enabledApiProposals": [],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "sprintbridge-sidebar",
+          "title": "SprintBridge",
+          "icon": "media/sprintbridge.svg"
+        }
+      ]
+    },
+    "views": {
+      "sprintbridge-sidebar": [
+        {
+          "type": "webview",
+          "id": "sprintbridge.sidebarView",
+          "name": "SprintBridge"
+        }
+      ]
+    },
+    "chatParticipants": [
+      {
+        "id": "sprintbridge.chat",
+        "fullName": "SprintBridge",
+        "name": "sprintbridge",
+        "description": "Manage Azure DevOps work items, boards, and sprints using natural language",
+        "isSticky": true
+      }
+    ],
+    "commands": [
+      {
+        "command": "sprintbridge.configure",
+        "title": "SprintBridge: Configure ADO Connection"
+      },
+      {
+        "command": "sprintbridge.signIn",
+        "title": "SprintBridge: Sign In to Azure DevOps"
+      },
+      {
+        "command": "sprintbridge.refreshWorkItems",
+        "title": "SprintBridge: Refresh Work Items",
+        "icon": "$(refresh)"
+      }
+    ],
+    "configuration": {
+      "title": "SprintBridge",
+      "properties": {
+        "sprintbridge.organization": {
+          "type": "string",
+          "default": "",
+          "description": "Azure DevOps organization name (e.g., 'msazure')"
+        },
+        "sprintbridge.project": {
+          "type": "string",
+          "default": "",
+          "description": "Azure DevOps project name (e.g., 'One')"
+        },
+        "sprintbridge.areaPath": {
+          "type": "string",
+          "default": "",
+          "description": "Azure DevOps area path to filter work items (e.g., 'One\\\\Rome\\\\CloudNativeSec')"
+        },
+        "sprintbridge.userEmail": {
+          "type": "string",
+          "default": "",
+          "description": "Your full email for ADO (e.g., 'cohenor@microsoft.com'). Used by AI chat for 'assigned to me'."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.93.0",
+    "typescript": "^5.3.0"
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "compile-extension",
+      "type": "shell",
+      "command": "npm run compile",
+      "options": {
+        "cwd": "${workspaceFolder}/src/extension"
+      },
+      "problemMatcher": ["$tsc"],
+      "group": "build"
+    },
+    {
+      "label": "start-backend",
+      "type": "shell",
+      "command": "dotnet run --urls http://localhost:5059",
+      "options": {
+        "cwd": "${workspaceFolder}/src/backend/SprintBridge.Api"
+      },
+      "isBackground": true,
+      "problemMatcher": {
+        "pattern": { "regexp": "^$" },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "^Building\\.\\.\\.",
+          "endsPattern": "Now listening on"
+        }
+      }
+    },
+    {
+      "label": "build-all",
+      "dependsOn": ["start-backend", "compile-extension"],
+      "dependsOrder": "sequence"
+    }
+  ]
+}
