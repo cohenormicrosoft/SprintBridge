@@ -152,6 +152,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
   private async handleQuery(org: string, project: string, token: string, filters: any): Promise<void> {
     const areaPath = filters.areaPath || "";
+    const hasAnyFilter = areaPath || filters.assignee || filters.type || filters.state;
+
+    if (!hasAnyFilter) {
+      this.postMessage({ command: "error", message: "Please set an area path or apply at least one filter to avoid loading too many items." });
+      return;
+    }
 
     const conditions: string[] = [];
 
