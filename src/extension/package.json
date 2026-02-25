@@ -1,8 +1,8 @@
 {
   "name": "sprintbridge",
   "displayName": "SprintBridge",
-  "description": "AI-powered Azure DevOps Boards integration for VS Code via Copilot Chat",
-  "version": "0.1.0",
+  "description": "Manage Azure DevOps work items with AI — browse, create, edit, and query your backlog without leaving VS Code",
+  "version": "0.1.1",
   "publisher": "OrCohen",
   "icon": "media/sprintbridge.png",
   "license": "MIT",
