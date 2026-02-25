@@ -39,7 +39,7 @@ export async function activate(context: vscode.ExtensionContext) {
       const config = vscode.workspace.getConfiguration("sprintbridge");
       const org = await vscode.window.showInputBox({
         prompt: "Enter your Azure DevOps organization name",
-        placeHolder: "e.g., msazure",
+        placeHolder: "e.g., myorg",
         value: config.get<string>("organization"),
       });
       if (org) {

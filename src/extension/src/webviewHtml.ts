@@ -120,10 +120,12 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
     .board-card { background: var(--bg); border: 1px solid var(--border); border-left: 3px solid var(--btn-bg); border-radius: 3px; padding: 6px 8px; margin-bottom: 4px; cursor: grab; font-size: 12px; }
     .board-card:active { cursor: grabbing; opacity: 0.7; }
     .board-card.drag-over { border-top: 2px solid var(--btn-bg); }
-    .board-card-id { opacity: 0.5; font-size: 11px; }
+    .board-card-id { opacity: 0.5; font-size: 11px; cursor: pointer; }
+    .board-card-id:hover { opacity: 1; text-decoration: underline; }
     .board-card-title { margin-top: 2px; font-weight: 500; }
     .board-card-meta { margin-top: 3px; opacity: 0.6; font-size: 11px; }
     .board-card .type-badge { font-size: 10px; padding: 1px 4px; }
+    .copy-toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--btn-bg); color: var(--bg); padding: 4px 14px; border-radius: 4px; font-size: 12px; z-index: 999; opacity: 0; transition: opacity 0.2s; pointer-events: none; }
     .board-column-body.drag-target { background: rgba(255,255,255,0.05); outline: 1px dashed var(--btn-bg); }
 
     /* Edit mode */
@@ -150,7 +152,7 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
       <p>Connect to your Azure DevOps organization to get started.</p>
       <div class="form-group">
         <label>Organization *</label>
-        <input class="form-input" id="setup-org" placeholder="e.g. msazure" />
+        <input class="form-input" id="setup-org" placeholder="e.g. myorg" />
       </div>
       <div class="form-group">
         <label>Project *</label>
@@ -158,7 +160,7 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
       </div>
       <div class="form-group">
         <label>Area Path</label>
-        <input class="form-input" id="setup-areapath" placeholder="e.g. One\\Rome\\CloudNativeSec\\MyTeam" />
+        <input class="form-input" id="setup-areapath" placeholder="e.g. MyProject\\MyArea\\MyTeam" />
       </div>
       <div class="form-group">
         <label>Your Email</label>
@@ -219,6 +221,7 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
         <option value="">Enter team → load sprints</option>
       </select>
       <input class="filter-input" id="board-areapath" placeholder="Area path" style="flex:1;min-width:100px;" />
+      <label style="display:flex;align-items:center;gap:4px;font-size:12px;white-space:nowrap;"><input type="checkbox" id="board-me-filter" /> Me</label>
       <button class="btn btn-primary" id="board-load" style="padding:4px 12px;">Load</button>
     </div>
     <div class="panel-content" id="board-container" style="padding:0;">
@@ -290,7 +293,7 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
       <h3 style="margin-bottom:12px;font-size:14px;">Settings</h3>
       <div class="form-group">
         <label>Organization</label>
-        <input class="form-input" id="settings-org" placeholder="e.g. msazure" />
+        <input class="form-input" id="settings-org" placeholder="e.g. myorg" />
       </div>
       <div class="form-group">
         <label>Project</label>
@@ -298,7 +301,7 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
       </div>
       <div class="form-group">
         <label>Area Path</label>
-        <input class="form-input" id="settings-areapath" placeholder="e.g. One\\Rome\\CloudNativeSec\\MyTeam" />
+        <input class="form-input" id="settings-areapath" placeholder="e.g. MyProject\\MyArea\\MyTeam" />
       </div>
       <div class="form-group">
         <label>Your Email</label>
@@ -312,6 +315,7 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
   </div>
 
   </div><!-- /main-app -->
+  <div class="copy-toast" id="copy-toast">Copied!</div>
 
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
@@ -611,7 +615,8 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
       vscode.postMessage({
         command: 'getBoardItems',
         iterationPath: iteration,
-        areaPath: boardAreaInput.value.trim() || undefined
+        areaPath: boardAreaInput.value.trim() || undefined,
+        assignedToMe: document.getElementById('board-me-filter').checked
       });
     });
 
@@ -643,7 +648,7 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
         cards.forEach(item => {
           const typeClass = 'type-' + (item.type || '').toLowerCase().replace(/\\s+/g, '');
           html += '<div class="board-card" draggable="true" data-id="' + item.id + '">' +
-            '<div><span class="type-badge ' + typeClass + '">' + esc(item.type) + '</span> <span class="board-card-id">#' + item.id + '</span></div>' +
+            '<div><span class="type-badge ' + typeClass + '">' + esc(item.type) + '</span> <span class="board-card-id" data-copy-id="' + item.id + '" title="Click to copy ID">#' + item.id + '</span></div>' +
             '<div class="board-card-title">' + esc(item.title) + '</div>' +
             '<div class="board-card-meta">' + esc(item.assignedTo || 'Unassigned') + '</div>' +
           '</div>';
@@ -678,6 +683,20 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
           if (itemId && newState) {
             vscode.postMessage({ command: 'moveWorkItem', id: itemId, newState });
           }
+        });
+      });
+
+      // Click to copy work item ID
+      container.querySelectorAll('.board-card-id[data-copy-id]').forEach(el => {
+        el.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const id = el.getAttribute('data-copy-id');
+          navigator.clipboard.writeText(id).then(() => {
+            const toast = document.getElementById('copy-toast');
+            toast.textContent = 'Copied #' + id;
+            toast.style.opacity = '1';
+            setTimeout(() => { toast.style.opacity = '0'; }, 1200);
+          });
         });
       });
     }

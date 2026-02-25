@@ -254,6 +254,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     if (msg.areaPath) {
       conditions.push(`[System.AreaPath] UNDER '${msg.areaPath}'`);
     }
+    if (msg.assignedToMe) {
+      conditions.push(`[System.AssignedTo] = @Me`);
+    }
     if (conditions.length === 0) {
       conditions.push(`[System.TeamProject] = @project`);
     }
