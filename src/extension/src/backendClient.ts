@@ -294,7 +294,26 @@ export class BackendClient {
                 resolve(data);
               }
             } else {
-              reject(new Error(`HTTP ${res.statusCode}: ${data || res.statusMessage}`));
+              const code = res.statusCode || 0;
+              let friendly: string;
+              if (code === 302 || code === 301 || code === 401) {
+                friendly = "Your session has expired. Please sign out and sign back in from the Settings tab.";
+              } else if (code === 403) {
+                friendly = "Access denied. Check that your account has permission to this Azure DevOps resource.";
+              } else if (code === 404) {
+                friendly = "Resource not found. Please verify your organization, project, and team names in Settings.";
+              } else if (code === 400) {
+                // Try to extract a meaningful message from ADO error body
+                try {
+                  const body = JSON.parse(data);
+                  friendly = body.message || data;
+                } catch {
+                  friendly = data || "Bad request. Please check your input and try again.";
+                }
+              } else {
+                friendly = `Unexpected error (HTTP ${code}). Please try again or check your settings.`;
+              }
+              reject(new Error(friendly));
             }
           });
         }
