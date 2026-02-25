@@ -122,6 +122,21 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         case "chatMessage":
           await this.handleChat(org, project, token, msg.text);
           break;
+        case "getTeams":
+          const teams = await this.backendClient.getTeams(org, project, token);
+          this.postMessage({ command: "teamsLoaded", teams });
+          break;
+        case "getIterations":
+          const iterations = await this.backendClient.getIterations(org, project, msg.team, token);
+          this.postMessage({ command: "iterationsLoaded", iterations });
+          break;
+        case "getBoardItems":
+          await this.handleBoardQuery(org, project, token, msg);
+          break;
+        case "moveWorkItem":
+          await this.backendClient.updateWorkItem(org, project, msg.id, { state: msg.newState }, token);
+          this.postMessage({ command: "workItemMoved", id: msg.id, newState: msg.newState });
+          break;
       }
     } catch (error: any) {
       this.postMessage({
@@ -129,7 +144,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         message: error.message || "An unexpected error occurred.",
         context: msg.command === "createWorkItem" ? "create" :
                  msg.command === "updateWorkItem" ? "edit" :
-                 msg.command === "chatMessage" ? "chat" : undefined,
+                 msg.command === "chatMessage" ? "chat" :
+                 msg.command === "getBoardItems" ? "board" : undefined,
       });
     }
   }
@@ -180,6 +196,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       priority: msg.priority,
     };
     const item = await this.backendClient.createWorkItem(org, project, request, token);
+    if (msg.parentId) {
+      await this.backendClient.addParentLink(org, project, item.id, msg.parentId, token);
+    }
     this.postMessage({ command: "workItemCreated", item });
   }
 
@@ -225,6 +244,22 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   private sendChatResponse(text: string): void {
     this.chatHistory.push({ role: "ai", text });
     this.postMessage({ command: "chatResponse", text });
+  }
+
+  private async handleBoardQuery(org: string, project: string, token: string, msg: any): Promise<void> {
+    const conditions: string[] = [];
+    if (msg.iterationPath) {
+      conditions.push(`[System.IterationPath] = '${msg.iterationPath}'`);
+    }
+    if (msg.areaPath) {
+      conditions.push(`[System.AreaPath] UNDER '${msg.areaPath}'`);
+    }
+    if (conditions.length === 0) {
+      conditions.push(`[System.TeamProject] = @project`);
+    }
+    const wiql = `SELECT [System.Id] FROM WorkItems WHERE ${conditions.join(" AND ")} ORDER BY [System.ChangedDate] DESC`;
+    const items = await this.backendClient.queryWorkItems(org, project, wiql, token);
+    this.postMessage({ command: "boardItemsLoaded", items });
   }
 
   private async handleChat(org: string, project: string, token: string, text: string): Promise<void> {

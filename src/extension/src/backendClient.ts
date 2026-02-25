@@ -180,6 +180,68 @@ export class BackendClient {
     return values.map(mapWorkItem);
   }
 
+  async addParentLink(
+    organization: string,
+    project: string,
+    childId: number,
+    parentId: number,
+    token: string
+  ): Promise<void> {
+    const patchDoc = [{
+      op: "add",
+      path: "/relations/-",
+      value: {
+        rel: "System.LinkTypes.Hierarchy-Reverse",
+        url: `https://dev.azure.com/${organization}/${project}/_apis/wit/workitems/${parentId}`,
+      },
+    }];
+    await this.adoRequest(
+      "PATCH",
+      `/${organization}/${project}/_apis/wit/workitems/${childId}?api-version=${ADO_API_VERSION}`,
+      token,
+      patchDoc,
+      "application/json-patch+json"
+    );
+  }
+
+  async getIterations(
+    organization: string,
+    project: string,
+    team: string,
+    token: string
+  ): Promise<{ id: string; name: string; path: string; startDate?: string; finishDate?: string; timeFrame?: string }[]> {
+    const json = await this.adoRequest(
+      "GET",
+      `/${organization}/${project}/${encodeURIComponent(team)}/_apis/work/teamsettings/iterations?api-version=${ADO_API_VERSION}`,
+      token
+    );
+    const items = json?.value;
+    if (!items || !Array.isArray(items)) { return []; }
+    return items.map((it: any) => ({
+      id: it.id,
+      name: it.name,
+      path: it.path,
+      startDate: it.attributes?.startDate || undefined,
+      finishDate: it.attributes?.finishDate || undefined,
+      timeFrame: it.attributes?.timeFrame || undefined,
+    }));
+  }
+
+  async getTeams(
+    organization: string,
+    project: string,
+    token: string
+  ): Promise<{ id: string; name: string }[]> {
+    const json = await this.adoRequest(
+      "GET",
+      `/${organization}/_apis/projects/${project}/teams?api-version=${ADO_API_VERSION}`,
+      token
+    );
+    const items = json?.value;
+    if (!items || !Array.isArray(items)) { return []; }
+    return items.map((t: any) => ({ id: t.id, name: t.name }));
+  }
+
   private adoRequest(
     method: string,
     path: string,

@@ -111,6 +111,21 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
     .error-msg { color: var(--error); padding: 8px 10px; font-size: 12px; }
     .success-msg { color: #4ec94e; padding: 8px 10px; font-size: 12px; }
 
+    /* Sprint Board */
+    .board-columns { display: flex; gap: 6px; padding: 8px; height: 100%; overflow-x: auto; min-height: 0; }
+    .board-column { flex: 1; min-width: 140px; background: var(--input-bg); border-radius: 4px; display: flex; flex-direction: column; max-height: 100%; }
+    .board-column-header { padding: 6px 8px; font-weight: 600; font-size: 12px; text-align: center; border-bottom: 2px solid var(--btn-bg); flex-shrink: 0; }
+    .board-column-header .col-count { font-weight: normal; opacity: 0.6; }
+    .board-column-body { flex: 1; overflow-y: auto; padding: 4px; min-height: 60px; }
+    .board-card { background: var(--bg); border: 1px solid var(--border); border-left: 3px solid var(--btn-bg); border-radius: 3px; padding: 6px 8px; margin-bottom: 4px; cursor: grab; font-size: 12px; }
+    .board-card:active { cursor: grabbing; opacity: 0.7; }
+    .board-card.drag-over { border-top: 2px solid var(--btn-bg); }
+    .board-card-id { opacity: 0.5; font-size: 11px; }
+    .board-card-title { margin-top: 2px; font-weight: 500; }
+    .board-card-meta { margin-top: 3px; opacity: 0.6; font-size: 11px; }
+    .board-card .type-badge { font-size: 10px; padding: 1px 4px; }
+    .board-column-body.drag-target { background: rgba(255,255,255,0.05); outline: 1px dashed var(--btn-bg); }
+
     /* Edit mode */
     .edit-form { padding: 10px; }
     .edit-form .form-group { margin-bottom: 10px; }
@@ -158,6 +173,7 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
   <div id="main-app">
   <div class="tabs">
     <button class="tab active" data-tab="workitems">Work Items</button>
+    <button class="tab" data-tab="board">Board</button>
     <button class="tab" data-tab="create">Create</button>
     <button class="tab" data-tab="chat">AI Chat</button>
     <button class="tab" data-tab="settings">⚙</button>
@@ -176,6 +192,7 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
         <option value="Bug">Bug</option>
         <option value="Task">Task</option>
         <option value="User Story">User Story</option>
+        <option value="Product Backlog Item">Product Backlog Item</option>
         <option value="Feature">Feature</option>
         <option value="Epic">Epic</option>
       </select>
@@ -194,6 +211,23 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
     <div class="panel-content" id="workitem-detail" style="display:none;"></div>
   </div>
 
+  <!-- Board Panel -->
+  <div class="panel" id="panel-board">
+    <div class="board-filters" style="padding:8px 10px;border-bottom:1px solid var(--border);display:flex;gap:6px;flex-wrap:wrap;align-items:center;flex-shrink:0;">
+      <select class="filter-select" id="board-team" style="flex:1;min-width:100px;">
+        <option value="">Select team...</option>
+      </select>
+      <select class="filter-select" id="board-iteration" style="flex:1;min-width:120px;">
+        <option value="">Select sprint...</option>
+      </select>
+      <input class="filter-input" id="board-areapath" placeholder="Area path" style="flex:1;min-width:100px;" />
+      <button class="btn btn-primary" id="board-load" style="padding:4px 12px;">Load</button>
+    </div>
+    <div class="panel-content" id="board-container" style="padding:0;">
+      <div class="empty-state">Select a team and sprint, then click Load.</div>
+    </div>
+  </div>
+
   <!-- Create Panel -->
   <div class="panel" id="panel-create">
     <div class="panel-content">
@@ -204,6 +238,7 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
           <option value="Task">Task</option>
           <option value="Bug">Bug</option>
           <option value="User Story">User Story</option>
+          <option value="Product Backlog Item">Product Backlog Item</option>
           <option value="Feature">Feature</option>
           <option value="Epic">Epic</option>
         </select>
@@ -229,6 +264,10 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
           <option value="3">3 - Medium</option>
           <option value="4">4 - Low</option>
         </select>
+      </div>
+      <div class="form-group">
+        <label>Parent Work Item ID</label>
+        <input class="form-input" id="create-parent" type="number" placeholder="e.g. 12345 (optional)" />
       </div>
       <button class="btn btn-primary" id="create-submit">Create Work Item</button>
     </div>
@@ -299,6 +338,7 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
       if (areaPath) {
         document.getElementById('settings-areapath').value = areaPath;
         document.getElementById('filter-areapath').value = areaPath;
+        document.getElementById('board-areapath').value = areaPath;
       }
       if (userEmail) document.getElementById('settings-email').value = userEmail;
       loadWorkItems();
@@ -536,9 +576,114 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
         title,
         description: document.getElementById('create-desc').value || undefined,
         assignedTo: document.getElementById('create-assigned').value || undefined,
-        priority: document.getElementById('create-priority').value ? parseInt(document.getElementById('create-priority').value) : undefined
+        priority: document.getElementById('create-priority').value ? parseInt(document.getElementById('create-priority').value) : undefined,
+        parentId: document.getElementById('create-parent').value ? parseInt(document.getElementById('create-parent').value) : undefined
       });
     });
+
+    // --- Sprint Board ---
+    let boardTeamsLoaded = false;
+    const boardTeamSel = document.getElementById('board-team');
+    const boardIterSel = document.getElementById('board-iteration');
+    const boardAreaInput = document.getElementById('board-areapath');
+
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        if (tab.dataset.tab === 'board' && !boardTeamsLoaded) {
+          boardTeamsLoaded = true;
+          vscode.postMessage({ command: 'getTeams' });
+        }
+      });
+    });
+
+    boardTeamSel.addEventListener('change', () => {
+      const team = boardTeamSel.value;
+      if (team) {
+        boardIterSel.innerHTML = '<option value="">Loading sprints...</option>';
+        vscode.postMessage({ command: 'getIterations', team });
+      }
+    });
+
+    document.getElementById('board-load').addEventListener('click', () => {
+      const iteration = boardIterSel.value;
+      if (!iteration) {
+        document.getElementById('board-container').innerHTML = '<div class="error-msg">Please select a sprint.</div>';
+        return;
+      }
+      document.getElementById('board-container').innerHTML = '<div class="loading">Loading board...</div>';
+      vscode.postMessage({
+        command: 'getBoardItems',
+        iterationPath: iteration,
+        areaPath: boardAreaInput.value.trim() || undefined
+      });
+    });
+
+    const boardStates = ['New', 'Active', 'Resolved', 'Closed'];
+
+    function renderBoard(items) {
+      const container = document.getElementById('board-container');
+      const grouped = {};
+      boardStates.forEach(s => { grouped[s] = []; });
+      const otherStates = [];
+
+      items.forEach(item => {
+        const st = item.state || 'New';
+        if (grouped[st]) {
+          grouped[st].push(item);
+        } else {
+          if (!grouped[st]) { grouped[st] = []; otherStates.push(st); }
+          grouped[st].push(item);
+        }
+      });
+
+      const allStates = [...boardStates, ...otherStates];
+      let html = '<div class="board-columns">';
+      allStates.forEach(state => {
+        const cards = grouped[state] || [];
+        html += '<div class="board-column">' +
+          '<div class="board-column-header">' + esc(state) + ' <span class="col-count">(' + cards.length + ')</span></div>' +
+          '<div class="board-column-body" data-state="' + escAttr(state) + '">';
+        cards.forEach(item => {
+          const typeClass = 'type-' + (item.type || '').toLowerCase().replace(/\\s+/g, '');
+          html += '<div class="board-card" draggable="true" data-id="' + item.id + '">' +
+            '<div><span class="type-badge ' + typeClass + '">' + esc(item.type) + '</span> <span class="board-card-id">#' + item.id + '</span></div>' +
+            '<div class="board-card-title">' + esc(item.title) + '</div>' +
+            '<div class="board-card-meta">' + esc(item.assignedTo || 'Unassigned') + '</div>' +
+          '</div>';
+        });
+        html += '</div></div>';
+      });
+      html += '</div>';
+      container.innerHTML = html;
+
+      // Drag and drop
+      container.querySelectorAll('.board-card').forEach(card => {
+        card.addEventListener('dragstart', (e) => {
+          e.dataTransfer.setData('text/plain', card.dataset.id);
+          e.dataTransfer.effectAllowed = 'move';
+        });
+      });
+
+      container.querySelectorAll('.board-column-body').forEach(col => {
+        col.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          col.classList.add('drag-target');
+        });
+        col.addEventListener('dragleave', () => {
+          col.classList.remove('drag-target');
+        });
+        col.addEventListener('drop', (e) => {
+          e.preventDefault();
+          col.classList.remove('drag-target');
+          const itemId = parseInt(e.dataTransfer.getData('text/plain'));
+          const newState = col.dataset.state;
+          if (itemId && newState) {
+            vscode.postMessage({ command: 'moveWorkItem', id: itemId, newState });
+          }
+        });
+      });
+    }
 
     // --- Chat ---
     const chatMessages = document.getElementById('chat-messages');
@@ -594,6 +739,7 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
           document.getElementById('create-desc').value = '';
           document.getElementById('create-assigned').value = '';
           document.getElementById('create-priority').value = '';
+          document.getElementById('create-parent').value = '';
           break;
         case 'workItemUpdated':
           document.getElementById('edit-status')?.remove;
@@ -601,6 +747,26 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
           break;
         case 'workItemDeleted':
           loadWorkItems();
+          break;
+        case 'teamsLoaded':
+          boardTeamSel.innerHTML = '<option value="">Select team...</option>';
+          (msg.teams || []).forEach(t => {
+            boardTeamSel.innerHTML += '<option value="' + escAttr(t.name) + '">' + esc(t.name) + '</option>';
+          });
+          break;
+        case 'iterationsLoaded':
+          boardIterSel.innerHTML = '<option value="">Select sprint...</option>';
+          (msg.iterations || []).forEach(it => {
+            const label = it.name + (it.timeFrame === 'current' ? ' (current)' : '');
+            boardIterSel.innerHTML += '<option value="' + escAttr(it.path) + '"' + (it.timeFrame === 'current' ? ' selected' : '') + '>' + esc(label) + '</option>';
+          });
+          break;
+        case 'boardItemsLoaded':
+          renderBoard(msg.items || []);
+          break;
+        case 'workItemMoved':
+          // Reload the board after a move
+          document.getElementById('board-load').click();
           break;
         case 'chatResponse':
           addChatMessage('ai', msg.text);
@@ -615,6 +781,8 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
             if (es) es.innerHTML = '<div class="error-msg">' + esc(msg.message) + '</div>';
           } else if (msg.context === 'chat') {
             addChatMessage('ai', '\\u274c ' + msg.message);
+          } else if (msg.context === 'board') {
+            document.getElementById('board-container').innerHTML = '<div class="error-msg">' + esc(msg.message) + '</div>';
           } else {
             document.getElementById('workitems-list').innerHTML = '<div class="error-msg">' + esc(msg.message) + '</div>';
           }
