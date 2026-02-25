@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/sprintbridge-banner.png" alt="SprintBridge" width="600"/>
+  <img src="src/extension/media/sprintbridge-banner.png" alt="SprintBridge" width="600"/>
 </p>
 
 <h1 align="center">SprintBridge</h1>
