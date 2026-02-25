@@ -1,11 +1,11 @@
 <p align="center">
-  <img src="src/extension/media/sprintbridge-banner.png" alt="SprintBridge" width="600"/>
+  <img src="src/extension/media/sprintbridge-banner.png" alt="SprintBridge" width="450"/>
 </p>
 
 <h1 align="center">SprintBridge</h1>
 
 <p align="center">
-  <strong>Your Azure DevOps backlog, right inside VS Code.</strong>
+  <strong>AI-powered Azure DevOps sprint management — right inside VS Code.</strong>
 </p>
 
 <p align="center">
@@ -18,109 +18,57 @@
 
 ---
 
-SprintBridge brings Azure DevOps work item management into your editor. Browse your backlog, run your sprint board, create and edit items, or just talk to the AI — all without switching to the browser.
+SprintBridge is a VS Code extension that puts your Azure DevOps sprint workflow at your fingertips. Use the **AI assistant** to manage work items with natural language, view your **sprint board** with drag-and-drop, or browse and edit your **backlog** — all without leaving your editor.
 
-## ✨ Features
+## ✨ What You Can Do
 
-### 📋 Work Items Explorer
+### 🤖 AI Sprint Assistant
 
-Browse work items in a **hierarchical tree view** with parent-child relationships, just like Azure DevOps Boards.
+An AI chat built into the sidebar that understands your Azure DevOps context. Just describe what you need in plain English — it knows your identity, your project, and your area path.
 
-| Capability | Description |
-|------------|-------------|
-| **Tree View** | Work items displayed with hierarchy — epics → features → stories → tasks |
-| **Smart Filters** | Filter by area path, assignee, work item type, and state |
-| **Detail View** | Click any item to see full details including description, priority, and scheduling fields |
-| **Inline Edit** | Edit title, state, assigned to, priority, remaining work, and more — saves only changed fields |
-| **Delete** | Remove work items with a confirmation prompt |
+> *"Show my active bugs"*
+> *"Create a task for API refactoring assigned to me"*
+> *"What's the total remaining work on my sprint items?"*
+> *"Move item 54321 to In Review"*
+
+- Conversation memory — ask follow-up questions naturally
+- Creates, queries, updates, and deletes work items on your behalf
+- Computes aggregations (sum, average, min/max) across your items
+- Friendly responses — no raw errors or cryptic codes
 
 ### 🗂️ Sprint Board
 
-A full **Kanban-style sprint board** with drag-and-drop — pick your team, select a sprint, and manage your workflow visually.
+A visual Kanban board that mirrors your Azure DevOps sprint — search for your team, pick a sprint, and drag cards between columns to update state instantly.
 
-| Capability | Description |
-|------------|-------------|
-| **Team & Sprint Picker** | Type your team name, sprints load automatically with the current one pre-selected |
-| **Kanban Columns** | Cards grouped by state: New → Optional → Committed → In Progress → In Review → Done |
-| **Drag & Drop** | Move cards between columns to update state instantly |
-| **Area Path Scoping** | Filter the board to your team's area path |
+### 📋 Backlog Explorer
 
-### ➕ Create Work Items
+Browse your work items in a hierarchical tree — epics, features, stories, and tasks — with filters for area path, type, assignee, and state. Click to view details, edit inline, or delete.
 
-Create any work item type directly from the sidebar — no browser needed.
+### ➕ Quick Create
 
-| Field | Supported |
-|-------|-----------|
-| **Type** | Task, Bug, User Story, Product Backlog Item, Feature, Epic |
-| **Title & Description** | Full text with HTML support |
-| **Assigned To** | Email or display name |
-| **Priority** | 1 (Critical) through 4 (Low) |
-| **Parent Link** | Attach to a parent work item by ID |
-
-### 🤖 AI Chat
-
-Talk to your backlog in plain English. The AI understands context, remembers your conversation, and knows who you are.
-
-> *"Create a task for updating the API docs assigned to me"*
-> *"Show my active bugs"*
-> *"Sum remaining work for my items"*
-> *"Update item 54321 to In Review"*
-
-| Capability | Description |
-|------------|-------------|
-| **Natural Language** | Create, query, update, and delete work items by just describing what you want |
-| **Aggregations** | Ask for sums, averages, min/max of remaining work, completed work, or estimates |
-| **Conversation Memory** | The AI remembers your recent messages for follow-up questions |
-| **User Context** | Knows your email, org, project, and area path — "assigned to me" just works |
-| **Friendly Errors** | No raw HTTP errors — if something fails, you get a helpful suggestion |
-
-### ⚙️ Settings
-
-Everything configurable from the sidebar — no need to touch JSON files.
-
-| Setting | Description |
-|---------|-------------|
-| `Organization` | Your Azure DevOps organization |
-| `Project` | Your Azure DevOps project |
-| `Area Path` | Default area path for filtering |
-| `User Email` | Your email for AI identity context |
+Spin up any work item type (Task, Bug, User Story, PBI, Feature, Epic) directly from the sidebar, with support for parent linking, priority, and scheduling fields.
 
 ## 🚀 Getting Started
 
 1. **Install** — Search "SprintBridge" in the VS Code Extensions marketplace, or [install directly](https://marketplace.visualstudio.com/items?itemName=OrCohen.sprintbridge)
 2. **Open** — Click the SprintBridge icon in the activity bar
-3. **Configure** — Enter your Azure DevOps organization and project
+3. **Configure** — Enter your Azure DevOps organization and project in the Settings tab
 4. **Sign In** — Authenticate with your Microsoft account
-5. **Go** — Browse your backlog, open the sprint board, or start chatting with the AI
+5. **Go** — Open the AI chat and start managing your sprint
 
-## 🏗️ Project Structure
+## ⚙️ Configuration
 
-```
-SprintBridge/
-├── src/
-│   └── extension/              # VS Code Extension (TypeScript)
-│       ├── src/
-│       │   ├── extension.ts        # Entry point & lifecycle
-│       │   ├── sidebarProvider.ts   # Webview provider & message handling
-│       │   ├── webviewHtml.ts       # Full sidebar UI (HTML/CSS/JS)
-│       │   ├── backendClient.ts     # Direct ADO REST API client
-│       │   ├── auth.ts              # Microsoft OAuth provider
-│       │   └── chatParticipant.ts   # @sprintbridge chat participant
-│       ├── media/                   # Icons & logos
-│       └── package.json             # Extension manifest
-└── docs/                            # Documentation assets
-```
+| Setting | Description |
+|---------|-------------|
+| `Organization` | Your Azure DevOps organization |
+| `Project` | Your Azure DevOps project |
+| `Area Path` | Default area path for scoping queries and the board |
+| `User Email` | Your email — so the AI knows who "me" is |
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please:
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/my-feature`)
-3. Commit your changes (`git commit -m 'Add my feature'`)
-4. Push to the branch (`git push origin feature/my-feature`)
-5. Open a Pull Request
+Contributions are welcome! Fork the repo, create a feature branch, and open a Pull Request.
 
 ## 📄 License
 
-This project is licensed under the MIT License — see the [LICENSE](src/extension/LICENSE) file for details.
+MIT — see the [LICENSE](src/extension/LICENSE) file for details.
