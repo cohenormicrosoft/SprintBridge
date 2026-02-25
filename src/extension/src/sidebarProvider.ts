@@ -266,8 +266,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     this.chatHistory.push({ role: "user", text });
     const intent = await this.parseIntent(text);
 
-    if (!intent) {
-      this.sendChatResponse("I couldn't understand that. Try things like:\n• \"Show my active bugs\"\n• \"Create a task for updating docs\"\n• \"Update item 12345 state to Resolved\"");
+    if (!intent || !intent.action) {
+      this.sendChatResponse("I couldn't understand that. Try things like:\n• \"Show my active bugs\"\n• \"Create a task for updating docs\"\n• \"Update item 12345 state to Resolved\"\n• \"Sum remaining work assigned to me\"");
       return;
     }
 
@@ -298,7 +298,16 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           }
           const item = await this.backendClient.getWorkItem(org, project, intent.workItemId, token);
           if (item) {
-            this.sendChatResponse(`${item.type} #${item.id}: ${item.title}\nState: ${item.state || "N/A"}\nAssigned: ${item.assignedTo || "Unassigned"}\nPriority: ${item.priority || "N/A"}`);
+            const details = [
+              `${item.type} #${item.id}: ${item.title}`,
+              `State: ${item.state || "N/A"}`,
+              `Assigned: ${item.assignedTo || "Unassigned"}`,
+              `Priority: ${item.priority || "N/A"}`,
+            ];
+            if (item.remainingWork != null) { details.push(`Remaining: ${item.remainingWork}h`); }
+            if (item.completedWork != null) { details.push(`Completed: ${item.completedWork}h`); }
+            if (item.originalEstimate != null) { details.push(`Estimate: ${item.originalEstimate}h`); }
+            this.sendChatResponse(details.join("\n"));
           } else {
             this.sendChatResponse(`Work item #${intent.workItemId} not found.`);
           }
@@ -333,18 +342,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             return;
           }
           const ok = await this.backendClient.deleteWorkItem(org, project, intent.workItemId, token);
-          this.sendChatResponse(ok ? `✅ Deleted #${intent.workItemId}.` : `❌ Failed to delete #${intent.workItemId}.`);
+          this.sendChatResponse(ok ? `✅ Deleted #${intent.workItemId}.` : `Failed to delete #${intent.workItemId}. Check permissions.`);
           break;
         }
         case "query": {
-          const conditions: string[] = [];
-          if (intent.queryText) {
-            conditions.push(intent.queryText);
-          } else {
-            conditions.push("[System.AssignedTo] = @Me");
-          }
-          const wiql = `SELECT [System.Id], [System.Title], [System.State], [System.WorkItemType] FROM WorkItems WHERE ${conditions.join(" AND ")} ORDER BY [System.ChangedDate] DESC`;
-          const items = await this.backendClient.queryWorkItems(org, project, wiql, token);
+          const wiql = this.buildWiql(intent);
+          const items = await this.safeQuery(org, project, wiql, token);
           if (items.length === 0) {
             this.sendChatResponse("No work items found.");
           } else {
@@ -354,18 +357,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           break;
         }
         case "aggregate": {
-          const aggConditions: string[] = [];
-          if (intent.queryText) {
-            aggConditions.push(intent.queryText);
-          } else {
-            aggConditions.push("[System.AssignedTo] = @Me");
-          }
-          const aggWiql = `SELECT [System.Id] FROM WorkItems WHERE ${aggConditions.join(" AND ")} ORDER BY [System.ChangedDate] DESC`;
-          const aggItems = await this.backendClient.queryWorkItems(org, project, aggWiql, token);
+          const aggWiql = this.buildWiql(intent);
+          const aggItems = await this.safeQuery(org, project, aggWiql, token);
           if (aggItems.length === 0) {
             this.sendChatResponse("No work items found matching that criteria.");
           } else {
-            const fieldMap: Record<string, keyof typeof aggItems[0]> = {
+            const fieldMap: Record<string, string> = {
               remainingWork: "remainingWork",
               completedWork: "completedWork",
               originalEstimate: "originalEstimate",
@@ -391,8 +388,61 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           this.sendChatResponse("I'm not sure what to do. Try \"Create a bug titled ...\" or \"Show my tasks\".");
       }
     } catch (error: any) {
-      this.sendChatResponse(`❌ ${error.message}`);
+      this.sendChatResponse(this.friendlyError(error));
     }
+  }
+
+  private buildWiql(intent: any): string {
+    let where = intent.queryText || "";
+    // Sanitize common AI mistakes: bare field names → proper WIQL references
+    const fieldFixMap: Record<string, string> = {
+      "AssignedTo": "[System.AssignedTo]",
+      "State": "[System.State]",
+      "Title": "[System.Title]",
+      "WorkItemType": "[System.WorkItemType]",
+      "AreaPath": "[System.AreaPath]",
+      "IterationPath": "[System.IterationPath]",
+      "Priority": "[Microsoft.VSTS.Common.Priority]",
+      "RemainingWork": "[Microsoft.VSTS.Scheduling.RemainingWork]",
+      "CompletedWork": "[Microsoft.VSTS.Scheduling.CompletedWork]",
+      "OriginalEstimate": "[Microsoft.VSTS.Scheduling.OriginalEstimate]",
+    };
+    for (const [bare, full] of Object.entries(fieldFixMap)) {
+      // Match bare field name not already inside brackets
+      const regex = new RegExp(`(?<!\\[System\\.|\\[Microsoft\\.[\\w.]*|\\w)\\b${bare}\\b(?!\\])`, "gi");
+      where = where.replace(regex, full);
+    }
+    if (!where || where.trim().length === 0) {
+      where = "[System.AssignedTo] = @Me";
+    }
+    return `SELECT [System.Id] FROM WorkItems WHERE ${where} ORDER BY [System.ChangedDate] DESC`;
+  }
+
+  private async safeQuery(org: string, project: string, wiql: string, token: string): Promise<import("./backendClient").WorkItem[]> {
+    try {
+      return await this.backendClient.queryWorkItems(org, project, wiql, token);
+    } catch {
+      // If WIQL fails, fall back to a simple @Me query
+      const fallback = `SELECT [System.Id] FROM WorkItems WHERE [System.AssignedTo] = @Me ORDER BY [System.ChangedDate] DESC`;
+      return await this.backendClient.queryWorkItems(org, project, fallback, token);
+    }
+  }
+
+  private friendlyError(error: any): string {
+    const msg = error?.message || "Something went wrong.";
+    if (msg.includes("HTTP 400")) {
+      return "I had trouble with that request. Could you rephrase? For example:\n• \"Show my active tasks\"\n• \"Sum remaining work for my items\"";
+    }
+    if (msg.includes("HTTP 401") || msg.includes("Unauthorized")) {
+      return "Your session may have expired. Go to Settings and sign in again.";
+    }
+    if (msg.includes("HTTP 404")) {
+      return "That work item wasn't found. Check the ID and try again.";
+    }
+    if (msg.includes("HTTP 403")) {
+      return "You don't have permission for that operation.";
+    }
+    return "Something went wrong. Try rephrasing your request.";
   }
 
   private async parseIntent(prompt: string): Promise<any | null> {
