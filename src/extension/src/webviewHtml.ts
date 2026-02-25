@@ -214,11 +214,9 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
   <!-- Board Panel -->
   <div class="panel" id="panel-board">
     <div class="board-filters" style="padding:8px 10px;border-bottom:1px solid var(--border);display:flex;gap:6px;flex-wrap:wrap;align-items:center;flex-shrink:0;">
-      <select class="filter-select" id="board-team" style="flex:1;min-width:100px;">
-        <option value="">Select team...</option>
-      </select>
+      <input class="filter-input" id="board-team" placeholder="Team name (e.g. MyTeam)" style="flex:1;min-width:100px;" />
       <select class="filter-select" id="board-iteration" style="flex:1;min-width:120px;">
-        <option value="">Select sprint...</option>
+        <option value="">Enter team → load sprints</option>
       </select>
       <input class="filter-input" id="board-areapath" placeholder="Area path" style="flex:1;min-width:100px;" />
       <button class="btn btn-primary" id="board-load" style="padding:4px 12px;">Load</button>
@@ -582,29 +580,28 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
     });
 
     // --- Sprint Board ---
-    let boardTeamsLoaded = false;
-    const boardTeamSel = document.getElementById('board-team');
+    const boardTeamInput = document.getElementById('board-team');
     const boardIterSel = document.getElementById('board-iteration');
     const boardAreaInput = document.getElementById('board-areapath');
+    let boardTeamTimer = null;
 
-    document.querySelectorAll('.tab').forEach(tab => {
-      tab.addEventListener('click', () => {
-        if (tab.dataset.tab === 'board' && !boardTeamsLoaded) {
-          boardTeamsLoaded = true;
-          vscode.postMessage({ command: 'getTeams' });
+    boardTeamInput.addEventListener('input', () => {
+      clearTimeout(boardTeamTimer);
+      boardTeamTimer = setTimeout(() => {
+        const team = boardTeamInput.value.trim();
+        if (team) {
+          boardIterSel.innerHTML = '<option value="">Loading sprints...</option>';
+          vscode.postMessage({ command: 'getIterations', team });
         }
-      });
-    });
-
-    boardTeamSel.addEventListener('change', () => {
-      const team = boardTeamSel.value;
-      if (team) {
-        boardIterSel.innerHTML = '<option value="">Loading sprints...</option>';
-        vscode.postMessage({ command: 'getIterations', team });
-      }
+      }, 600);
     });
 
     document.getElementById('board-load').addEventListener('click', () => {
+      const team = boardTeamInput.value.trim();
+      if (!team) {
+        document.getElementById('board-container').innerHTML = '<div class="error-msg">Please enter a team name.</div>';
+        return;
+      }
       const iteration = boardIterSel.value;
       if (!iteration) {
         document.getElementById('board-container').innerHTML = '<div class="error-msg">Please select a sprint.</div>';
@@ -747,12 +744,6 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
           break;
         case 'workItemDeleted':
           loadWorkItems();
-          break;
-        case 'teamsLoaded':
-          boardTeamSel.innerHTML = '<option value="">Select team...</option>';
-          (msg.teams || []).forEach(t => {
-            boardTeamSel.innerHTML += '<option value="' + escAttr(t.name) + '">' + esc(t.name) + '</option>';
-          });
           break;
         case 'iterationsLoaded':
           boardIterSel.innerHTML = '<option value="">Select sprint...</option>';
