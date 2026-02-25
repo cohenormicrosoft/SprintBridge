@@ -178,7 +178,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     }
 
     const where = conditions.join(" AND ");
-    const wiql = `SELECT [System.Id], [System.Title], [System.State], [System.WorkItemType] FROM WorkItems WHERE ${where} ORDER BY [System.ChangedDate] DESC`;
+    const wiql = `SELECT TOP 200 [System.Id], [System.Title], [System.State], [System.WorkItemType] FROM WorkItems WHERE ${where} ORDER BY [System.ChangedDate] DESC`;
 
     const items = await this.backendClient.queryWorkItems(org, project, wiql, token);
     this.postMessage({ command: "workItemsLoaded", items });
@@ -283,7 +283,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     if (conditions.length === 0) {
       conditions.push(`[System.TeamProject] = @project`);
     }
-    const wiql = `SELECT [System.Id] FROM WorkItems WHERE ${conditions.join(" AND ")} ORDER BY [System.ChangedDate] DESC`;
+    const wiql = `SELECT TOP 500 [System.Id] FROM WorkItems WHERE ${conditions.join(" AND ")} ORDER BY [System.ChangedDate] DESC`;
     const items = await this.backendClient.queryWorkItems(org, project, wiql, token);
     this.postMessage({ command: "boardItemsLoaded", items });
   }
@@ -441,7 +441,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     if (!where || where.trim().length === 0) {
       where = "[System.AssignedTo] = @Me";
     }
-    return `SELECT [System.Id] FROM WorkItems WHERE ${where} ORDER BY [System.ChangedDate] DESC`;
+    return `SELECT TOP 200 [System.Id] FROM WorkItems WHERE ${where} ORDER BY [System.ChangedDate] DESC`;
   }
 
   private async safeQuery(org: string, project: string, wiql: string, token: string): Promise<import("./backendClient").WorkItem[]> {
@@ -449,7 +449,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       return await this.backendClient.queryWorkItems(org, project, wiql, token);
     } catch {
       // If WIQL fails, fall back to a simple @Me query
-      const fallback = `SELECT [System.Id] FROM WorkItems WHERE [System.AssignedTo] = @Me ORDER BY [System.ChangedDate] DESC`;
+      const fallback = `SELECT TOP 200 [System.Id] FROM WorkItems WHERE [System.AssignedTo] = @Me ORDER BY [System.ChangedDate] DESC`;
       return await this.backendClient.queryWorkItems(org, project, fallback, token);
     }
   }
