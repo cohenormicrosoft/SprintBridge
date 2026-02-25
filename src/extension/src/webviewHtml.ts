@@ -615,7 +615,7 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
       });
     });
 
-    const boardStates = ['New', 'Active', 'Resolved', 'Closed'];
+    const boardStates = ['New', 'Optional', 'Committed', 'In Progress', 'In Review', 'Done'];
 
     function renderBoard(items) {
       const container = document.getElementById('board-container');
