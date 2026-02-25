@@ -6,7 +6,7 @@
 
 An AI assistant that manages your Azure DevOps sprints, backlog, and work items — all from within VS Code.
 
-## 🤖 AI Sprint Assistant
+## AI Sprint Assistant
 
 Talk to your backlog in plain English. The AI knows your identity, project, and area path — just describe what you need.
 
@@ -20,19 +20,19 @@ Talk to your backlog in plain English. The AI knows your identity, project, and 
 - **Aggregations** — sum, average, min/max across your items
 - **Friendly responses** — no raw errors, just helpful answers
 
-## 🗂️ Sprint Board
+## Sprint Board
 
 A visual Kanban board that mirrors your Azure DevOps sprint. Search for your team, pick a sprint, and drag cards between columns to update state instantly.
 
-## 📋 Backlog Explorer
+## Backlog Explorer
 
 Browse work items in a hierarchical tree — epics, features, stories, and tasks — with filters for area path, type, assignee, and state. Click to view details, edit inline, or delete.
 
-## ➕ Quick Create
+## Quick Create
 
 Create any work item type (Task, Bug, User Story, PBI, Feature, Epic) directly from the sidebar, with parent linking, priority, and scheduling fields.
 
-## 🚀 Getting Started
+## Getting Started
 
 1. Install SprintBridge from the VS Code Marketplace
 2. Click the SprintBridge icon in the activity bar
@@ -40,7 +40,7 @@ Create any work item type (Task, Bug, User Story, PBI, Feature, Epic) directly f
 4. Sign in with your Microsoft account
 5. Open the AI chat and start managing your sprint!
 
-## ⚙️ Configuration
+## Configuration
 
 | Setting | Description |
 |---------|-------------|
@@ -49,6 +49,6 @@ Create any work item type (Task, Bug, User Story, PBI, Feature, Epic) directly f
 | `sprintbridge.areaPath` | Default area path for scoping queries and the board |
 | `sprintbridge.userEmail` | Your email — so the AI knows who "me" is |
 
-## 📄 License
+## License
 
 MIT — see [LICENSE](LICENSE) for details.

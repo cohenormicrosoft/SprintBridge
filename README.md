@@ -20,9 +20,9 @@
 
 SprintBridge is a VS Code extension that puts your Azure DevOps sprint workflow at your fingertips. Use the **AI assistant** to manage work items with natural language, view your **sprint board** with drag-and-drop, or browse and edit your **backlog** — all without leaving your editor.
 
-## ✨ What You Can Do
+## What You Can Do
 
-### 🤖 AI Sprint Assistant
+### AI Sprint Assistant
 
 An AI chat built into the sidebar that understands your Azure DevOps context. Just describe what you need in plain English — it knows your identity, your project, and your area path.
 
@@ -36,19 +36,19 @@ An AI chat built into the sidebar that understands your Azure DevOps context. Ju
 - Computes aggregations (sum, average, min/max) across your items
 - Friendly responses — no raw errors or cryptic codes
 
-### 🗂️ Sprint Board
+### Sprint Board
 
 A visual Kanban board that mirrors your Azure DevOps sprint — search for your team, pick a sprint, and drag cards between columns to update state instantly.
 
-### 📋 Backlog Explorer
+### Backlog Explorer
 
 Browse your work items in a hierarchical tree — epics, features, stories, and tasks — with filters for area path, type, assignee, and state. Click to view details, edit inline, or delete.
 
-### ➕ Quick Create
+### Quick Create
 
 Spin up any work item type (Task, Bug, User Story, PBI, Feature, Epic) directly from the sidebar, with support for parent linking, priority, and scheduling fields.
 
-## 🚀 Getting Started
+## Getting Started
 
 1. **Install** — Search "SprintBridge" in the VS Code Extensions marketplace, or [install directly](https://marketplace.visualstudio.com/items?itemName=OrCohen.sprintbridge)
 2. **Open** — Click the SprintBridge icon in the activity bar
@@ -56,19 +56,19 @@ Spin up any work item type (Task, Bug, User Story, PBI, Feature, Epic) directly 
 4. **Sign In** — Authenticate with your Microsoft account
 5. **Go** — Open the AI chat and start managing your sprint
 
-## ⚙️ Configuration
+## Configuration
 
 | Setting | Description |
 |---------|-------------|
 | `Organization` | Your Azure DevOps organization |
 | `Project` | Your Azure DevOps project |
 | `Area Path` | Default area path for scoping queries and the board |
-| `User Email` | Your email — so the AI knows who "me" is |
+| `User Email` | Your organization email |
 
-## 🤝 Contributing
+## Contributing
 
 Contributions are welcome! Fork the repo, create a feature branch, and open a Pull Request.
 
-## 📄 License
+## License
 
 MIT — see the [LICENSE](src/extension/LICENSE) file for details.
