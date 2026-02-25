@@ -44,8 +44,15 @@ app.MapPatch("/api/workitems/{organization}/{project}/{id:int}", async (
 {
     var token = ExtractToken(request);
     if (token is null) return Results.Unauthorized();
-    var result = await ado.UpdateWorkItemAsync(organization, project, id, body, token);
-    return result is not null ? Results.Ok(result) : Results.NotFound();
+    try
+    {
+        var result = await ado.UpdateWorkItemAsync(organization, project, id, body, token);
+        return result is not null ? Results.Ok(result) : Results.NotFound();
+    }
+    catch (HttpRequestException ex)
+    {
+        return Results.Problem(ex.Message, statusCode: (int?)ex.StatusCode ?? 500);
+    }
 });
 
 app.MapDelete("/api/workitems/{organization}/{project}/{id:int}", async (
@@ -79,6 +86,6 @@ static string? ExtractToken(HttpRequest request)
 }
 
 // Request/Response records
-public record CreateWorkItemRequest(string Type, string Title, string? Description = null, string? AssignedTo = null, string? State = null, string? AreaPath = null, string? IterationPath = null, int? Priority = null);
-public record UpdateWorkItemRequest(string? Title = null, string? Description = null, string? AssignedTo = null, string? State = null, string? AreaPath = null, string? IterationPath = null, int? Priority = null);
+public record CreateWorkItemRequest(string Type, string Title, string? Description = null, string? AssignedTo = null, string? State = null, string? AreaPath = null, string? IterationPath = null, int? Priority = null, double? RemainingWork = null, double? CompletedWork = null, double? OriginalEstimate = null);
+public record UpdateWorkItemRequest(string? Title = null, string? Description = null, string? AssignedTo = null, string? State = null, string? AreaPath = null, string? IterationPath = null, int? Priority = null, double? RemainingWork = null, double? CompletedWork = null, double? OriginalEstimate = null);
 public record WorkItemQueryRequest(string Wiql);

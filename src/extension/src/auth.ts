@@ -35,4 +35,11 @@ export class AuthProvider {
     this.session = session;
     return !!session;
   }
+
+  async getAccountName(): Promise<string | undefined> {
+    if (!this.session) {
+      await this.getToken();
+    }
+    return this.session?.account?.label;
+  }
 }

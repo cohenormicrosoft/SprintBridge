@@ -6,6 +6,7 @@ import { getWebviewHtml } from "./webviewHtml";
 export class SidebarProvider implements vscode.WebviewViewProvider {
   public static readonly viewId = "sprintbridge.sidebarView";
   private view?: vscode.WebviewView;
+  private chatHistory: Array<{ role: "user" | "ai"; text: string }> = [];
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -41,6 +42,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         organization: config.get<string>("organization") || "",
         project: config.get<string>("project") || "",
         areaPath: config.get<string>("areaPath") || "",
+        userEmail: config.get<string>("userEmail") || "",
       });
       return;
     }
@@ -52,11 +54,15 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       if (msg.areaPath !== undefined) {
         await config.update("areaPath", msg.areaPath, vscode.ConfigurationTarget.Global);
       }
+      if (msg.userEmail !== undefined) {
+        await config.update("userEmail", msg.userEmail, vscode.ConfigurationTarget.Global);
+      }
       this.postMessage({
         command: "configSaved",
         organization: msg.organization,
         project: msg.project,
         areaPath: msg.areaPath || "",
+        userEmail: msg.userEmail || "",
       });
       return;
     }
@@ -129,8 +135,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   }
 
   private async handleQuery(org: string, project: string, token: string, filters: any): Promise<void> {
-    const config = vscode.workspace.getConfiguration("sprintbridge");
-    const areaPath = config.get<string>("areaPath") || "";
+    const areaPath = filters.areaPath || "";
 
     const conditions: string[] = [];
 
@@ -179,19 +184,26 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   }
 
   private async handleUpdate(org: string, project: string, token: string, id: number, updates: any): Promise<void> {
+    if (!id) {
+      this.postMessage({ command: "error", message: `Update failed: Invalid work item ID (${id})`, context: "edit" });
+      return;
+    }
     const request: UpdateWorkItemRequest = {};
     if (updates.title) { request.title = updates.title; }
     if (updates.state) { request.state = updates.state; }
     if (updates.assignedTo) { request.assignedTo = updates.assignedTo; }
     if (updates.priority) { request.priority = updates.priority; }
     if (updates.description) { request.description = updates.description; }
+    if (updates.remainingWork !== undefined) { request.remainingWork = updates.remainingWork; }
+    if (updates.completedWork !== undefined) { request.completedWork = updates.completedWork; }
+    if (updates.originalEstimate !== undefined) { request.originalEstimate = updates.originalEstimate; }
 
-    const item = await this.backendClient.updateWorkItem(org, project, id, request, token);
-    if (item) {
+    try {
+      const item = await this.backendClient.updateWorkItem(org, project, id, request, token);
       this.postMessage({ command: "workItemUpdated", item });
       vscode.window.showInformationMessage(`Work item #${id} updated.`);
-    } else {
-      this.postMessage({ command: "error", message: `Failed to update #${id}.`, context: "edit" });
+    } catch (error: any) {
+      this.postMessage({ command: "error", message: `Update failed: ${error.message}`, context: "edit" });
     }
   }
 
@@ -210,63 +222,83 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     }
   }
 
+  private sendChatResponse(text: string): void {
+    this.chatHistory.push({ role: "ai", text });
+    this.postMessage({ command: "chatResponse", text });
+  }
+
   private async handleChat(org: string, project: string, token: string, text: string): Promise<void> {
+    this.chatHistory.push({ role: "user", text });
     const intent = await this.parseIntent(text);
 
     if (!intent) {
-      this.postMessage({ command: "chatResponse", text: "I couldn't understand that. Try things like:\n• \"Show my active bugs\"\n• \"Create a task for updating docs\"\n• \"Update item 12345 state to Resolved\"" });
+      this.sendChatResponse("I couldn't understand that. Try things like:\n• \"Show my active bugs\"\n• \"Create a task for updating docs\"\n• \"Update item 12345 state to Resolved\"");
       return;
     }
 
     try {
       switch (intent.action) {
         case "create": {
+          let assignTo = intent.assignedTo;
+          if (assignTo && /^(@?me|myself)$/i.test(assignTo.trim())) {
+            assignTo = await this.authProvider.getAccountName() || undefined;
+          }
           const item = await this.backendClient.createWorkItem(org, project, {
             type: intent.workItemType || "Task",
             title: intent.title || "New Work Item",
             description: intent.description,
-            assignedTo: intent.assignedTo,
+            assignedTo: assignTo,
             priority: intent.priority,
+            remainingWork: intent.remainingWork,
+            completedWork: intent.completedWork,
+            originalEstimate: intent.originalEstimate,
           }, token);
-          this.postMessage({ command: "chatResponse", text: `✅ Created ${item.type} #${item.id}: "${item.title}"` });
+          this.sendChatResponse(`✅ Created ${item.type} #${item.id}: "${item.title}"`);
           break;
         }
         case "get": {
           if (!intent.workItemId) {
-            this.postMessage({ command: "chatResponse", text: "Which work item? Give me an ID, e.g. \"Show 12345\"" });
+            this.sendChatResponse("Which work item? Give me an ID, e.g. \"Show 12345\"");
             return;
           }
           const item = await this.backendClient.getWorkItem(org, project, intent.workItemId, token);
           if (item) {
-            this.postMessage({ command: "chatResponse", text: `${item.type} #${item.id}: ${item.title}\nState: ${item.state || "N/A"}\nAssigned: ${item.assignedTo || "Unassigned"}\nPriority: ${item.priority || "N/A"}` });
+            this.sendChatResponse(`${item.type} #${item.id}: ${item.title}\nState: ${item.state || "N/A"}\nAssigned: ${item.assignedTo || "Unassigned"}\nPriority: ${item.priority || "N/A"}`);
           } else {
-            this.postMessage({ command: "chatResponse", text: `Work item #${intent.workItemId} not found.` });
+            this.sendChatResponse(`Work item #${intent.workItemId} not found.`);
           }
           break;
         }
         case "update": {
           if (!intent.workItemId) {
-            this.postMessage({ command: "chatResponse", text: "Which work item? e.g. \"Update 12345 state to Active\"" });
+            this.sendChatResponse("Which work item? e.g. \"Update 12345 state to Active\"");
             return;
           }
           const req: UpdateWorkItemRequest = {};
           if (intent.title) { req.title = intent.title; }
           if (intent.state) { req.state = intent.state; }
-          if (intent.assignedTo) { req.assignedTo = intent.assignedTo; }
-          if (intent.priority) { req.priority = intent.priority; }
-          const updated = await this.backendClient.updateWorkItem(org, project, intent.workItemId, req, token);
-          if (updated) {
-            this.postMessage({ command: "chatResponse", text: `✅ Updated #${updated.id}: ${updated.title} (${updated.state})` });
+          if (intent.assignedTo) {
+            if (/^(@?me|myself)$/i.test(intent.assignedTo.trim())) {
+              req.assignedTo = await this.authProvider.getAccountName() || intent.assignedTo;
+            } else {
+              req.assignedTo = intent.assignedTo;
+            }
           }
+          if (intent.priority) { req.priority = intent.priority; }
+          if (intent.remainingWork !== undefined) { req.remainingWork = intent.remainingWork; }
+          if (intent.completedWork !== undefined) { req.completedWork = intent.completedWork; }
+          if (intent.originalEstimate !== undefined) { req.originalEstimate = intent.originalEstimate; }
+          const updated = await this.backendClient.updateWorkItem(org, project, intent.workItemId, req, token);
+          this.sendChatResponse(`✅ Updated #${updated.id}: ${updated.title} (${updated.state})`);
           break;
         }
         case "delete": {
           if (!intent.workItemId) {
-            this.postMessage({ command: "chatResponse", text: "Which work item? e.g. \"Delete 12345\"" });
+            this.sendChatResponse("Which work item? e.g. \"Delete 12345\"");
             return;
           }
           const ok = await this.backendClient.deleteWorkItem(org, project, intent.workItemId, token);
-          this.postMessage({ command: "chatResponse", text: ok ? `✅ Deleted #${intent.workItemId}.` : `❌ Failed to delete #${intent.workItemId}.` });
+          this.sendChatResponse(ok ? `✅ Deleted #${intent.workItemId}.` : `❌ Failed to delete #${intent.workItemId}.`);
           break;
         }
         case "query": {
@@ -279,18 +311,18 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           const wiql = `SELECT [System.Id], [System.Title], [System.State], [System.WorkItemType] FROM WorkItems WHERE ${conditions.join(" AND ")} ORDER BY [System.ChangedDate] DESC`;
           const items = await this.backendClient.queryWorkItems(org, project, wiql, token);
           if (items.length === 0) {
-            this.postMessage({ command: "chatResponse", text: "No work items found." });
+            this.sendChatResponse("No work items found.");
           } else {
             const lines = items.slice(0, 15).map(i => `• #${i.id} [${i.type}] ${i.title} (${i.state || "N/A"})`);
-            this.postMessage({ command: "chatResponse", text: `Found ${items.length} item(s):\n${lines.join("\n")}` });
+            this.sendChatResponse(`Found ${items.length} item(s):\n${lines.join("\n")}`);
           }
           break;
         }
         default:
-          this.postMessage({ command: "chatResponse", text: "I'm not sure what to do. Try \"Create a bug titled ...\" or \"Show my tasks\"." });
+          this.sendChatResponse("I'm not sure what to do. Try \"Create a bug titled ...\" or \"Show my tasks\".");
       }
     } catch (error: any) {
-      this.postMessage({ command: "chatResponse", text: `❌ ${error.message}` });
+      this.sendChatResponse(`❌ ${error.message}`);
     }
   }
 
@@ -301,24 +333,53 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         return this.fallbackParse(prompt);
       }
 
+      const config = vscode.workspace.getConfiguration("sprintbridge");
+      const userEmail = config.get<string>("userEmail") || await this.authProvider.getAccountName() || "unknown";
+      const areaPath = config.get<string>("areaPath") || "";
+      const org = config.get<string>("organization") || "";
+      const project = config.get<string>("project") || "";
+
       const model = models[0];
       const systemPrompt = `You are a JSON parser for Azure DevOps work item operations.
+
+USER CONTEXT:
+- User email: ${userEmail}
+- Organization: ${org}
+- Project: ${project}
+- Default area path: ${areaPath}
+
+When the user says "me", "myself", or "assigned to me", use their email: "${userEmail}".
+
 Given a user message, extract the intent as JSON with these fields:
 - action: "create" | "get" | "update" | "delete" | "query"
 - workItemId: number (if referencing an existing item)
 - workItemType: string (Bug, Task, User Story, Feature, Epic)
 - title: string (for create/update)
 - description: string (for create/update)
-- assignedTo: string (for create/update)
+- assignedTo: string (use actual email, not "me")
 - state: string (New, Active, Resolved, Closed)
 - priority: number 1-4
+- remainingWork: number (hours, for create/update)
+- completedWork: number (hours, for create/update)
+- originalEstimate: number (hours, for create/update)
 - queryText: string (WIQL WHERE clause)
-Respond with ONLY valid JSON.`;
+Respond with ONLY valid JSON. Use conversation history for context.`;
 
-      const messages = [
+      const messages: vscode.LanguageModelChatMessage[] = [
         vscode.LanguageModelChatMessage.User(systemPrompt),
-        vscode.LanguageModelChatMessage.User(`Parse this: "${prompt}"`),
       ];
+
+      // Add recent chat history for context (last 10 exchanges)
+      const recentHistory = this.chatHistory.slice(-20);
+      for (const msg of recentHistory) {
+        if (msg.role === "user") {
+          messages.push(vscode.LanguageModelChatMessage.User(`Previous user message: "${msg.text}"`));
+        } else {
+          messages.push(vscode.LanguageModelChatMessage.Assistant(msg.text));
+        }
+      }
+
+      messages.push(vscode.LanguageModelChatMessage.User(`Parse this new request: "${prompt}"`));
 
       const response = await model.sendRequest(messages, {}, new vscode.CancellationTokenSource().token);
       let text = "";

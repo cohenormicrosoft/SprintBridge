@@ -29,7 +29,10 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
       --link: var(--vscode-textLink-foreground);
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); color: var(--fg); background: var(--bg); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+    html, body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); color: var(--fg); background: var(--bg); height: 100%; overflow: hidden; margin: 0; padding: 0; }
+    body { display: flex; flex-direction: column; }
+    #setup-screen { overflow-y: auto; }
+    #main-app { display: flex; flex-direction: column; flex: 1; overflow: hidden; min-height: 0; }
 
     /* Tabs */
     .tabs { display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0; }
@@ -38,18 +41,19 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
     .tab.active { opacity: 1; border-bottom-color: var(--btn-bg); }
 
     /* Panels */
-    .panel { flex: 1; overflow-y: auto; display: none; flex-direction: column; }
+    .panel { flex: 1; display: none; flex-direction: column; overflow: hidden; min-height: 0; }
     .panel.active { display: flex; }
-    .panel-content { padding: 10px; flex: 1; overflow-y: auto; }
+    .panel-content { padding: 10px; overflow-y: auto; flex: 1; min-height: 0; }
 
     /* Filters */
-    .filters { padding: 8px 10px; border-bottom: 1px solid var(--border); display: flex; gap: 6px; flex-wrap: wrap; flex-shrink: 0; }
+    .filters { padding: 8px 10px; border-bottom: 1px solid var(--border); display: flex; gap: 6px; flex-wrap: wrap; flex-shrink: 0; align-items: center; }
     .filter-select { background: var(--input-bg); color: var(--input-fg); border: 1px solid var(--input-border); padding: 4px 6px; font-size: 11px; border-radius: 3px; }
+    .filter-input { background: var(--input-bg); color: var(--input-fg); border: 1px solid var(--input-border); padding: 4px 6px; font-size: 11px; border-radius: 3px; flex: 1; min-width: 80px; }
 
     /* Work item list */
-    .work-item { padding: 8px 10px; border-bottom: 1px solid var(--border); cursor: pointer; }
+    .work-item { padding: 6px 10px; border-bottom: 1px solid var(--border); cursor: pointer; }
     .work-item:hover { background: var(--list-hover); }
-    .work-item-header { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
+    .work-item-header { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; }
     .work-item-id { font-size: 11px; opacity: 0.7; }
     .work-item-title { font-size: 13px; font-weight: 500; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .work-item-meta { display: flex; gap: 8px; font-size: 11px; opacity: 0.7; }
@@ -60,6 +64,11 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
     .type-feature { background: #773b93; color: #fff; }
     .type-epic { background: #ff7b00; color: #fff; }
     .state-badge { padding: 1px 5px; border-radius: 3px; font-size: 10px; background: var(--badge-bg); color: var(--badge-fg); }
+
+    /* Hierarchy */
+    .tree-children { border-left: 1px solid var(--border); margin-left: 12px; }
+    .tree-toggle { background: none; border: none; color: var(--fg); cursor: pointer; font-size: 12px; padding: 0 4px 0 0; opacity: 0.7; flex-shrink: 0; }
+    .tree-toggle:hover { opacity: 1; }
 
     /* Detail view */
     .detail-view { padding: 10px; }
@@ -136,6 +145,10 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
         <label>Area Path</label>
         <input class="form-input" id="setup-areapath" placeholder="e.g. One\\Rome\\CloudNativeSec\\MyTeam" />
       </div>
+      <div class="form-group">
+        <label>Your Email</label>
+        <input class="form-input" id="setup-email" placeholder="e.g. you@microsoft.com" />
+      </div>
       <div id="setup-status"></div>
       <button class="btn btn-primary" id="setup-connect" style="width:100%;margin-top:4px;">Connect</button>
     </div>
@@ -153,8 +166,9 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
   <!-- Work Items Panel -->
   <div class="panel active" id="panel-workitems">
     <div class="filters">
+      <input class="filter-input" id="filter-areapath" placeholder="Area path (e.g. One\\Rome\\MyTeam)" />
       <select class="filter-select" id="filter-assignee">
-        <option value="team">Team area</option>
+        <option value="">Anyone</option>
         <option value="me">Assigned to me</option>
       </select>
       <select class="filter-select" id="filter-type">
@@ -249,6 +263,10 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
         <label>Area Path</label>
         <input class="form-input" id="settings-areapath" placeholder="e.g. One\\Rome\\CloudNativeSec\\MyTeam" />
       </div>
+      <div class="form-group">
+        <label>Your Email</label>
+        <input class="form-input" id="settings-email" placeholder="e.g. you@microsoft.com" />
+      </div>
       <div id="settings-status"></div>
       <button class="btn btn-primary" id="settings-save" style="margin-top:4px;">Save</button>
       <hr style="margin:16px 0;border:none;border-top:1px solid var(--border);">
@@ -273,12 +291,16 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
       setupScreen.style.display = 'flex';
       mainApp.style.display = 'none';
     }
-    function showMain(org, project, areaPath) {
+    function showMain(org, project, areaPath, userEmail) {
       setupScreen.style.display = 'none';
       mainApp.style.display = '';
       if (org) document.getElementById('settings-org').value = org;
       if (project) document.getElementById('settings-project').value = project;
-      if (areaPath) document.getElementById('settings-areapath').value = areaPath;
+      if (areaPath) {
+        document.getElementById('settings-areapath').value = areaPath;
+        document.getElementById('filter-areapath').value = areaPath;
+      }
+      if (userEmail) document.getElementById('settings-email').value = userEmail;
       loadWorkItems();
     }
 
@@ -286,22 +308,24 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
       const org = document.getElementById('setup-org').value.trim();
       const project = document.getElementById('setup-project').value.trim();
       const areaPath = document.getElementById('setup-areapath').value.trim();
+      const userEmail = document.getElementById('setup-email').value.trim();
       if (!org || !project) {
         document.getElementById('setup-status').innerHTML = '<div class="error-msg">Organization and Project are required.</div>';
         return;
       }
-      vscode.postMessage({ command: 'saveConfig', organization: org, project: project, areaPath: areaPath });
+      vscode.postMessage({ command: 'saveConfig', organization: org, project: project, areaPath: areaPath, userEmail: userEmail });
     });
 
     document.getElementById('settings-save').addEventListener('click', () => {
       const org = document.getElementById('settings-org').value.trim();
       const project = document.getElementById('settings-project').value.trim();
       const areaPath = document.getElementById('settings-areapath').value.trim();
+      const userEmail = document.getElementById('settings-email').value.trim();
       if (!org || !project) {
         document.getElementById('settings-status').innerHTML = '<div class="error-msg">Organization and Project are required.</div>';
         return;
       }
-      vscode.postMessage({ command: 'saveConfig', organization: org, project: project, areaPath: areaPath });
+      vscode.postMessage({ command: 'saveConfig', organization: org, project: project, areaPath: areaPath, userEmail: userEmail });
     });
 
     document.getElementById('settings-signin').addEventListener('click', () => {
@@ -326,19 +350,62 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
     });
 
     // --- Work Items ---
+    let areaPathDebounce;
     function loadWorkItems() {
+      const areaPath = document.getElementById('filter-areapath').value.trim();
       const assignee = document.getElementById('filter-assignee').value;
       const type = document.getElementById('filter-type').value;
       const stateFilter = document.getElementById('filter-state').value;
       document.getElementById('workitems-list').innerHTML = '<div class="loading">Loading work items...</div>';
       document.getElementById('workitems-list').style.display = '';
       document.getElementById('workitem-detail').style.display = 'none';
-      vscode.postMessage({ command: 'queryWorkItems', assignee, type, state: stateFilter });
+      vscode.postMessage({ command: 'queryWorkItems', areaPath, assignee, type, state: stateFilter });
     }
 
+    document.getElementById('filter-areapath').addEventListener('input', () => {
+      clearTimeout(areaPathDebounce);
+      areaPathDebounce = setTimeout(loadWorkItems, 600);
+    });
     document.getElementById('filter-assignee').addEventListener('change', loadWorkItems);
     document.getElementById('filter-type').addEventListener('change', loadWorkItems);
     document.getElementById('filter-state').addEventListener('change', loadWorkItems);
+
+    function buildTree(items) {
+      const map = {};
+      items.forEach(item => { map[item.id] = { ...item, children: [] }; });
+      const roots = [];
+      items.forEach(item => {
+        if (item.parentId && map[item.parentId]) {
+          map[item.parentId].children.push(map[item.id]);
+        } else {
+          roots.push(map[item.id]);
+        }
+      });
+      return roots;
+    }
+
+    function renderTreeNode(node) {
+      const typeClass = 'type-' + (node.type || '').toLowerCase().replace(/\\s+/g, '');
+      const hasChildren = node.children && node.children.length > 0;
+      let html = '<div class="work-item" data-id="' + node.id + '">' +
+        '<div class="work-item-header">' +
+          (hasChildren ? '<button class="tree-toggle" data-target="children-' + node.id + '">▼</button>' : '<span style="width:16px;display:inline-block;"></span>') +
+          '<span class="type-badge ' + typeClass + '">' + esc(node.type) + '</span>' +
+          '<span class="work-item-id">#' + node.id + '</span>' +
+          '<span class="work-item-title">' + esc(node.title) + '</span>' +
+        '</div>' +
+        '<div class="work-item-meta" style="margin-left:16px;">' +
+          '<span class="state-badge">' + esc(node.state || 'N/A') + '</span>' +
+          '<span>' + esc(node.assignedTo || 'Unassigned') + '</span>' +
+        '</div>' +
+      '</div>';
+      if (hasChildren) {
+        html += '<div class="tree-children" id="children-' + node.id + '">';
+        node.children.forEach(child => { html += renderTreeNode(child); });
+        html += '</div>';
+      }
+      return html;
+    }
 
     function renderWorkItems(items) {
       const container = document.getElementById('workitems-list');
@@ -346,24 +413,28 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
         container.innerHTML = '<div class="empty-state">No work items found.</div>';
         return;
       }
-      container.innerHTML = items.map(item => {
-        const typeClass = 'type-' + (item.type || '').toLowerCase().replace(/\\s+/g, '');
-        return '<div class="work-item" data-id="' + item.id + '">' +
-          '<div class="work-item-header">' +
-            '<span class="type-badge ' + typeClass + '">' + esc(item.type) + '</span>' +
-            '<span class="work-item-id">#' + item.id + '</span>' +
-            '<span class="work-item-title">' + esc(item.title) + '</span>' +
-          '</div>' +
-          '<div class="work-item-meta">' +
-            '<span class="state-badge">' + esc(item.state || 'N/A') + '</span>' +
-            '<span>' + esc(item.assignedTo || 'Unassigned') + '</span>' +
-          '</div>' +
-        '</div>';
-      }).join('');
 
+      const roots = buildTree(items);
+      container.innerHTML = roots.map(renderTreeNode).join('');
+
+      // Click to view detail
       container.querySelectorAll('.work-item').forEach(el => {
-        el.addEventListener('click', () => {
+        el.addEventListener('click', (e) => {
+          if (e.target.classList.contains('tree-toggle')) return;
           vscode.postMessage({ command: 'getWorkItem', id: parseInt(el.dataset.id) });
+        });
+      });
+
+      // Toggle children
+      container.querySelectorAll('.tree-toggle').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const target = document.getElementById(btn.dataset.target);
+          if (target) {
+            const hidden = target.style.display === 'none';
+            target.style.display = hidden ? '' : 'none';
+            btn.textContent = hidden ? '▼' : '▶';
+          }
         });
       });
     }
@@ -381,6 +452,9 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
         '<div class="detail-field"><label>Priority</label><div class="value">' + (item.priority || 'N/A') + '</div></div>' +
         '<div class="detail-field"><label>Area Path</label><div class="value">' + esc(item.areaPath || 'N/A') + '</div></div>' +
         '<div class="detail-field"><label>Iteration</label><div class="value">' + esc(item.iterationPath || 'N/A') + '</div></div>' +
+        '<div class="detail-field"><label>Remaining Work</label><div class="value">' + (item.remainingWork != null ? item.remainingWork + 'h' : 'N/A') + '</div></div>' +
+        '<div class="detail-field"><label>Completed Work</label><div class="value">' + (item.completedWork != null ? item.completedWork + 'h' : 'N/A') + '</div></div>' +
+        '<div class="detail-field"><label>Original Estimate</label><div class="value">' + (item.originalEstimate != null ? item.originalEstimate + 'h' : 'N/A') + '</div></div>' +
         (item.description ? '<div class="detail-field"><label>Description</label><div class="value desc-html">' + sanitizeHtml(item.description) + '</div></div>' : '') +
         '<div class="detail-actions">' +
           '<button class="btn btn-primary" id="detail-edit">Edit</button>' +
@@ -405,27 +479,44 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
         '<div class="edit-form">' +
           '<div id="edit-status"></div>' +
           '<div class="form-group"><label>Title</label><input class="form-input" id="edit-title" value="' + escAttr(item.title) + '" /></div>' +
-          '<div class="form-group"><label>State</label><select class="form-select" id="edit-state">' +
-            ['New','Active','Resolved','Closed'].map(s => '<option' + (s === item.state ? ' selected' : '') + '>' + s + '</option>').join('') +
-          '</select></div>' +
+          '<div class="form-group"><label>State</label><input class="form-input" id="edit-state" value="' + escAttr(item.state || '') + '" /></div>' +
           '<div class="form-group"><label>Assigned To</label><input class="form-input" id="edit-assigned" value="' + escAttr(item.assignedTo || '') + '" /></div>' +
           '<div class="form-group"><label>Priority</label><select class="form-select" id="edit-priority">' +
             '<option value="">Not set</option>' +
             [1,2,3,4].map(p => '<option value="' + p + '"' + (p === item.priority ? ' selected' : '') + '>' + p + '</option>').join('') +
           '</select></div>' +
           '<div class="form-group"><label>Description</label><textarea class="form-textarea" id="edit-desc">' + esc(item.description || '') + '</textarea></div>' +
+          '<div class="form-group"><label>Remaining Work (hours)</label><input class="form-input" id="edit-remaining" type="number" step="0.5" value="' + (item.remainingWork != null ? item.remainingWork : '') + '" /></div>' +
+          '<div class="form-group"><label>Completed Work (hours)</label><input class="form-input" id="edit-completed" type="number" step="0.5" value="' + (item.completedWork != null ? item.completedWork : '') + '" /></div>' +
+          '<div class="form-group"><label>Original Estimate (hours)</label><input class="form-input" id="edit-estimate" type="number" step="0.5" value="' + (item.originalEstimate != null ? item.originalEstimate : '') + '" /></div>' +
           '<button class="btn btn-primary" id="edit-save">Save Changes</button>' +
         '</div>';
 
       detail.querySelector('.detail-back').addEventListener('click', () => showDetail(item));
       detail.querySelector('#edit-save').addEventListener('click', () => {
-        const updates = {
-          title: document.getElementById('edit-title').value,
-          state: document.getElementById('edit-state').value,
-          assignedTo: document.getElementById('edit-assigned').value || undefined,
-          priority: document.getElementById('edit-priority').value ? parseInt(document.getElementById('edit-priority').value) : undefined,
-          description: document.getElementById('edit-desc').value || undefined
-        };
+        const updates = {};
+        const newTitle = document.getElementById('edit-title').value;
+        const newState = document.getElementById('edit-state').value;
+        const newAssigned = document.getElementById('edit-assigned').value;
+        const newPriority = document.getElementById('edit-priority').value;
+        const newDesc = document.getElementById('edit-desc').value;
+        const newRemaining = document.getElementById('edit-remaining').value;
+        const newCompleted = document.getElementById('edit-completed').value;
+        const newEstimate = document.getElementById('edit-estimate').value;
+
+        if (newTitle !== item.title) updates.title = newTitle;
+        if (newState !== (item.state || '')) updates.state = newState;
+        if (newAssigned !== (item.assignedTo || '')) updates.assignedTo = newAssigned || undefined;
+        if (newPriority !== String(item.priority || '')) updates.priority = newPriority ? parseInt(newPriority) : undefined;
+        if (newDesc !== (item.description || '')) updates.description = newDesc || undefined;
+        if (newRemaining !== String(item.remainingWork != null ? item.remainingWork : '')) updates.remainingWork = newRemaining !== '' ? parseFloat(newRemaining) : undefined;
+        if (newCompleted !== String(item.completedWork != null ? item.completedWork : '')) updates.completedWork = newCompleted !== '' ? parseFloat(newCompleted) : undefined;
+        if (newEstimate !== String(item.originalEstimate != null ? item.originalEstimate : '')) updates.originalEstimate = newEstimate !== '' ? parseFloat(newEstimate) : undefined;
+
+        if (Object.keys(updates).length === 0) {
+          document.getElementById('edit-status').innerHTML = '<div class="error-msg">No changes detected.</div>';
+          return;
+        }
         vscode.postMessage({ command: 'updateWorkItem', id: item.id, updates });
       });
     }
@@ -481,14 +572,14 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
       switch (msg.command) {
         case 'configLoaded':
           if (msg.organization && msg.project) {
-            showMain(msg.organization, msg.project, msg.areaPath);
+            showMain(msg.organization, msg.project, msg.areaPath, msg.userEmail);
           } else {
             showSetup();
           }
           break;
         case 'configSaved':
           document.getElementById('settings-status').innerHTML = '<div class="success-msg">Settings saved!</div>';
-          showMain(msg.organization, msg.project, msg.areaPath);
+          showMain(msg.organization, msg.project, msg.areaPath, msg.userEmail);
           break;
         case 'workItemsLoaded':
           renderWorkItems(msg.items);

@@ -3,7 +3,13 @@
   "displayName": "SprintBridge",
   "description": "AI-powered Azure DevOps Boards integration for VS Code via Copilot Chat",
   "version": "0.1.0",
-  "publisher": "sprintbridge",
+  "publisher": "OrCohen",
+  "icon": "media/sprintbridge.png",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cohenor_microsoft/SprintBridge"
+  },
   "engines": {
     "vscode": "^1.93.0"
   },
@@ -11,7 +17,7 @@
     "Chat"
   ],
   "activationEvents": [
-    "*"
+    "onView:sprintbridge.sidebarView"
   ],
   "main": "./out/extension.js",
   "enabledApiProposals": [],
@@ -80,6 +86,11 @@
           "type": "string",
           "default": "",
           "description": "Azure DevOps area path to filter work items (e.g., 'One\\\\Rome\\\\CloudNativeSec')"
+        },
+        "sprintbridge.userEmail": {
+          "type": "string",
+          "default": "",
+          "description": "Your full email for ADO (e.g., 'cohenor@microsoft.com'). Used by AI chat for 'assigned to me'."
         }
       }
     }

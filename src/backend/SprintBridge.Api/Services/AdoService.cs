@@ -65,6 +65,12 @@ public class AdoService : IAdoService
             patchDoc.Add(new("add", "/fields/System.IterationPath", request.IterationPath));
         if (request.Priority is not null)
             patchDoc.Add(new("add", "/fields/Microsoft.VSTS.Common.Priority", request.Priority));
+        if (request.RemainingWork is not null)
+            patchDoc.Add(new("add", "/fields/Microsoft.VSTS.Scheduling.RemainingWork", request.RemainingWork));
+        if (request.CompletedWork is not null)
+            patchDoc.Add(new("add", "/fields/Microsoft.VSTS.Scheduling.CompletedWork", request.CompletedWork));
+        if (request.OriginalEstimate is not null)
+            patchDoc.Add(new("add", "/fields/Microsoft.VSTS.Scheduling.OriginalEstimate", request.OriginalEstimate));
 
         var url = $"{organization}/{project}/_apis/wit/workitems/${request.Type}?api-version={AdoApiVersion}";
         var content = new StringContent(
@@ -85,19 +91,25 @@ public class AdoService : IAdoService
         var patchDoc = new List<AdoPatchOperation>();
 
         if (request.Title is not null)
-            patchDoc.Add(new("replace", "/fields/System.Title", request.Title));
+            patchDoc.Add(new("add", "/fields/System.Title", request.Title));
         if (request.Description is not null)
-            patchDoc.Add(new("replace", "/fields/System.Description", request.Description));
+            patchDoc.Add(new("add", "/fields/System.Description", request.Description));
         if (request.AssignedTo is not null)
-            patchDoc.Add(new("replace", "/fields/System.AssignedTo", request.AssignedTo));
+            patchDoc.Add(new("add", "/fields/System.AssignedTo", request.AssignedTo));
         if (request.State is not null)
-            patchDoc.Add(new("replace", "/fields/System.State", request.State));
+            patchDoc.Add(new("add", "/fields/System.State", request.State));
         if (request.AreaPath is not null)
-            patchDoc.Add(new("replace", "/fields/System.AreaPath", request.AreaPath));
+            patchDoc.Add(new("add", "/fields/System.AreaPath", request.AreaPath));
         if (request.IterationPath is not null)
-            patchDoc.Add(new("replace", "/fields/System.IterationPath", request.IterationPath));
+            patchDoc.Add(new("add", "/fields/System.IterationPath", request.IterationPath));
         if (request.Priority is not null)
-            patchDoc.Add(new("replace", "/fields/Microsoft.VSTS.Common.Priority", request.Priority));
+            patchDoc.Add(new("add", "/fields/Microsoft.VSTS.Common.Priority", request.Priority));
+        if (request.RemainingWork is not null)
+            patchDoc.Add(new("add", "/fields/Microsoft.VSTS.Scheduling.RemainingWork", request.RemainingWork));
+        if (request.CompletedWork is not null)
+            patchDoc.Add(new("add", "/fields/Microsoft.VSTS.Scheduling.CompletedWork", request.CompletedWork));
+        if (request.OriginalEstimate is not null)
+            patchDoc.Add(new("add", "/fields/Microsoft.VSTS.Scheduling.OriginalEstimate", request.OriginalEstimate));
 
         if (patchDoc.Count == 0) return await GetWorkItemAsync(organization, project, id, token);
 
@@ -109,7 +121,11 @@ public class AdoService : IAdoService
 
         var httpRequest = new HttpRequestMessage(HttpMethod.Patch, url) { Content = content };
         var response = await _httpClient.SendAsync(httpRequest);
-        if (!response.IsSuccessStatusCode) return null;
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorBody = await response.Content.ReadAsStringAsync();
+            throw new HttpRequestException($"ADO PATCH {response.StatusCode}: {errorBody}", null, response.StatusCode);
+        }
 
         var json = await response.Content.ReadFromJsonAsync<JsonElement>();
         return MapWorkItem(json);
@@ -179,7 +195,33 @@ public class AdoService : IAdoService
             Url = json.TryGetProperty("url", out var url) ? url.GetString() : null,
             CreatedDate = GetFieldDateOrNull(fields, "System.CreatedDate"),
             ChangedDate = GetFieldDateOrNull(fields, "System.ChangedDate"),
+            ParentId = GetParentId(json),
+            RemainingWork = GetFieldDoubleOrNull(fields, "Microsoft.VSTS.Scheduling.RemainingWork"),
+            CompletedWork = GetFieldDoubleOrNull(fields, "Microsoft.VSTS.Scheduling.CompletedWork"),
+            OriginalEstimate = GetFieldDoubleOrNull(fields, "Microsoft.VSTS.Scheduling.OriginalEstimate"),
         };
+    }
+
+    private static int? GetParentId(JsonElement json)
+    {
+        if (!json.TryGetProperty("relations", out var relations) || relations.ValueKind != JsonValueKind.Array)
+            return null;
+
+        foreach (var rel in relations.EnumerateArray())
+        {
+            if (rel.TryGetProperty("rel", out var relType) && relType.GetString() == "System.LinkTypes.Hierarchy-Reverse"
+                && rel.TryGetProperty("url", out var relUrl))
+            {
+                var urlStr = relUrl.GetString();
+                if (urlStr is not null)
+                {
+                    var lastSlash = urlStr.LastIndexOf('/');
+                    if (lastSlash >= 0 && int.TryParse(urlStr[(lastSlash + 1)..], out var parentId))
+                        return parentId;
+                }
+            }
+        }
+        return null;
     }
 
     private static string GetFieldString(JsonElement fields, string fieldName) =>
@@ -190,6 +232,9 @@ public class AdoService : IAdoService
 
     private static int? GetFieldIntOrNull(JsonElement fields, string fieldName) =>
         fields.TryGetProperty(fieldName, out var val) && val.ValueKind == JsonValueKind.Number ? val.GetInt32() : null;
+
+    private static double? GetFieldDoubleOrNull(JsonElement fields, string fieldName) =>
+        fields.TryGetProperty(fieldName, out var val) && val.ValueKind == JsonValueKind.Number ? val.GetDouble() : null;
 
     private static DateTime? GetFieldDateOrNull(JsonElement fields, string fieldName) =>
         fields.TryGetProperty(fieldName, out var val) && val.ValueKind == JsonValueKind.String

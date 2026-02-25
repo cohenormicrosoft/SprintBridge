@@ -14,4 +14,8 @@ public class WorkItemDto
     public string? Url { get; set; }
     public DateTime? CreatedDate { get; set; }
     public DateTime? ChangedDate { get; set; }
+    public int? ParentId { get; set; }
+    public double? RemainingWork { get; set; }
+    public double? CompletedWork { get; set; }
+    public double? OriginalEstimate { get; set; }
 }

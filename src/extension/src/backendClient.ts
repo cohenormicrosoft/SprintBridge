@@ -13,6 +13,10 @@ export interface WorkItem {
   url?: string;
   createdDate?: string;
   changedDate?: string;
+  parentId?: number;
+  remainingWork?: number;
+  completedWork?: number;
+  originalEstimate?: number;
 }
 
 export interface CreateWorkItemRequest {
@@ -24,6 +28,9 @@ export interface CreateWorkItemRequest {
   areaPath?: string;
   iterationPath?: string;
   priority?: number;
+  remainingWork?: number;
+  completedWork?: number;
+  originalEstimate?: number;
 }
 
 export interface UpdateWorkItemRequest {
@@ -34,6 +41,9 @@ export interface UpdateWorkItemRequest {
   areaPath?: string;
   iterationPath?: string;
   priority?: number;
+  remainingWork?: number;
+  completedWork?: number;
+  originalEstimate?: number;
 }
 
 export class BackendClient {
@@ -90,17 +100,13 @@ export class BackendClient {
     id: number,
     request: UpdateWorkItemRequest,
     token: string
-  ): Promise<WorkItem | null> {
-    try {
-      return await this.request(
-        "PATCH",
-        `/api/workitems/${organization}/${project}/${id}`,
-        request,
-        token
-      );
-    } catch {
-      return null;
-    }
+  ): Promise<WorkItem> {
+    return await this.request(
+      "PATCH",
+      `/api/workitems/${organization}/${project}/${id}`,
+      request,
+      token
+    );
   }
 
   async deleteWorkItem(
