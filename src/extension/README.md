@@ -1,29 +1,29 @@
-# 🌉 SprintBridge — ADO Work Items with AI
+# SprintBridge — ADO Work Items with AI
 
-**Manage your Azure DevOps backlog without leaving VS Code.**
+**Your Azure DevOps backlog, right inside VS Code.**
 
-Browse, create, edit, and query work items from a visual sidebar — or just tell the AI what you need in plain English.
+Browse your backlog, run your sprint board, create and edit items, or talk to the AI — all without switching to the browser.
 
-## Features
+## ✨ Features
 
-- **📋 Backlog View** — See your work items in a hierarchical tree, just like Azure DevOps Boards
-- **🔍 Smart Filters** — Filter by area path, assignee, type, and state
-- **✏️ Create & Edit** — Add new work items or update existing ones in seconds
-- **🤖 AI Chat** — Talk to your backlog:
-  - *"Create a task for updating docs assigned to me"*
+- **📋 Work Items Explorer** — Hierarchical tree view with parent-child relationships, smart filters, inline editing
+- **🗂️ Sprint Board** — Kanban-style board with drag-and-drop, team & sprint picker
+- **➕ Create Work Items** — Task, Bug, User Story, PBI, Feature, Epic — with parent link support
+- **🤖 AI Chat** — Natural language work item management with conversation memory and user context
+  - *"Create a task for updating the API docs assigned to me"*
   - *"Show my active bugs"*
-  - *"Set remaining work on item 12345 to 4 hours"*
-- **⚙️ Easy Setup** — Configure your org, project, and area path right from the sidebar
+  - *"Sum remaining work for items in my area"*
+- **⚙️ Easy Setup** — Configure everything right from the sidebar
 
-## Getting Started
+## 🚀 Getting Started
 
 1. Install SprintBridge from the VS Code Marketplace
 2. Click the SprintBridge icon in the activity bar
 3. Enter your Azure DevOps **Organization** and **Project**
 4. Sign in with your Microsoft account
-5. You're ready — start managing your work items!
+5. Start managing your work items!
 
-## Configuration
+## ⚙️ Configuration
 
 | Setting | Description |
 |---------|-------------|
@@ -32,6 +32,6 @@ Browse, create, edit, and query work items from a visual sidebar — or just tel
 | `sprintbridge.areaPath` | Default area path for filtering |
 | `sprintbridge.userEmail` | Your email (used by AI for "assigned to me") |
 
-## License
+## 📄 License
 
-MIT
+MIT — see [LICENSE](LICENSE) for details.
