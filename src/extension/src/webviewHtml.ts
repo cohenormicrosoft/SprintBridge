@@ -127,6 +127,13 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
     .board-card .type-badge { font-size: 10px; padding: 1px 4px; }
     .copy-toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--btn-bg); color: var(--bg); padding: 4px 14px; border-radius: 4px; font-size: 12px; z-index: 999; opacity: 0; transition: opacity 0.2s; pointer-events: none; }
     .board-column-body.drag-target { background: rgba(255,255,255,0.05); outline: 1px dashed var(--btn-bg); }
+    /* Toggle switch */
+    .toggle-wrap { display: flex; align-items: center; gap: 5px; font-size: 12px; white-space: nowrap; cursor: pointer; }
+    .toggle-switch { position: relative; width: 32px; height: 18px; background: var(--border); border-radius: 9px; transition: background 0.2s; flex-shrink: 0; }
+    .toggle-switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; background: var(--fg); border-radius: 50%; transition: transform 0.2s; }
+    .toggle-wrap input { display: none; }
+    .toggle-wrap input:checked + .toggle-switch { background: var(--btn-bg); }
+    .toggle-wrap input:checked + .toggle-switch::after { transform: translateX(14px); background: var(--btn-fg); }
 
     /* Edit mode */
     .edit-form { padding: 10px; }
@@ -220,7 +227,7 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
       <select class="filter-select" id="board-iteration" style="flex:1;min-width:120px;">
         <option value="">Enter team → load sprints</option>
       </select>
-      <label style="display:flex;align-items:center;gap:4px;font-size:12px;white-space:nowrap;"><input type="checkbox" id="board-me-filter" /> Me</label>
+      <label class="toggle-wrap"><input type="checkbox" id="board-me-filter" /><span class="toggle-switch"></span>Me</label>
       <button class="btn btn-primary" id="board-load" style="padding:4px 12px;">Load</button>
     </div>
     <div class="panel-content" id="board-container" style="padding:0;">

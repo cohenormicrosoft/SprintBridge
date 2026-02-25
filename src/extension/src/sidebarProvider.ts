@@ -284,284 +284,207 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
   private async handleChat(org: string, project: string, token: string, text: string): Promise<void> {
     this.chatHistory.push({ role: "user", text });
-    const intent = await this.parseIntent(text);
-
-    if (!intent || !intent.action) {
-      this.sendChatResponse("I couldn't understand that. Try things like:\n• \"Show my active bugs\"\n• \"Create a task for updating docs\"\n• \"Update item 12345 state to Resolved\"\n• \"Sum remaining work assigned to me\"");
-      return;
-    }
 
     try {
-      switch (intent.action) {
-        case "create": {
-          let assignTo = intent.assignedTo;
-          if (assignTo && /^(@?me|myself)$/i.test(assignTo.trim())) {
-            assignTo = await this.authProvider.getAccountName() || undefined;
-          }
-          const item = await this.backendClient.createWorkItem(org, project, {
-            type: intent.workItemType || "Task",
-            title: intent.title || "New Work Item",
-            description: intent.description,
-            assignedTo: assignTo,
-            priority: intent.priority,
-            remainingWork: intent.remainingWork,
-            completedWork: intent.completedWork,
-            originalEstimate: intent.originalEstimate,
-          }, token);
-          this.sendChatResponse(`✅ Created ${item.type} #${item.id}: "${item.title}"`);
-          break;
+      const models = await vscode.lm.selectChatModels({ family: "gpt-4o" });
+      if (models.length === 0) {
+        this.sendChatResponse("AI model not available. Make sure GitHub Copilot is installed and signed in.");
+        return;
+      }
+
+      const config = vscode.workspace.getConfiguration("sprintbridge");
+      const userEmail = config.get<string>("userEmail") || await this.authProvider.getAccountName() || "unknown";
+      const areaPath = config.get<string>("areaPath") || "";
+
+      const systemPrompt = `You are SprintBridge AI — a helpful assistant for managing Azure DevOps work items.
+
+USER: ${userEmail} | Org: ${org} | Project: ${project} | Area: ${areaPath || "not set"}
+
+You have TOOLS to interact with Azure DevOps. To use a tool, include a JSON block in your response like:
+\`\`\`tool
+{ "tool": "tool_name", ...params }
+\`\`\`
+
+AVAILABLE TOOLS:
+
+1. **query** — Search work items with WIQL WHERE clause.
+   \`\`\`tool
+   { "tool": "query", "where": "[System.AssignedTo] = @Me AND [System.State] NOT IN ('Closed', 'Done', 'Removed')" }
+   \`\`\`
+   WIQL field references: [System.AssignedTo], [System.State], [System.WorkItemType], [System.Title], [System.AreaPath], [System.IterationPath], [Microsoft.VSTS.Common.Priority], [Microsoft.VSTS.Scheduling.RemainingWork], [Microsoft.VSTS.Scheduling.CompletedWork], [Microsoft.VSTS.Scheduling.OriginalEstimate]
+   Use @Me for current user. "Active" items means NOT IN ('Closed', 'Done', 'Removed'). WIQL has no SUM/COUNT/AVG.
+
+2. **get** — Get a specific work item by ID.
+   \`\`\`tool
+   { "tool": "get", "id": 12345 }
+   \`\`\`
+
+3. **create** — Create a work item.
+   \`\`\`tool
+   { "tool": "create", "type": "Bug", "title": "Login crash", "assignedTo": "${userEmail}", "priority": 2 }
+   \`\`\`
+   Supported types: Bug, Task, User Story, Product Backlog Item, Feature, Epic.
+
+4. **update** — Update a work item.
+   \`\`\`tool
+   { "tool": "update", "id": 12345, "state": "In Progress", "priority": 1 }
+   \`\`\`
+
+5. **delete** — Delete a work item.
+   \`\`\`tool
+   { "tool": "delete", "id": 12345 }
+   \`\`\`
+
+GUIDELINES:
+- Be conversational and helpful. Respond naturally, not just with raw data.
+- When showing query results, summarize them clearly.
+- If a query returns no results, suggest broadening it.
+- For aggregations (sum, average, etc.), use the "query" tool to get items, then you'll receive the data and can compute the answer yourself.
+- When the user says "me"/"my", use @Me in queries and "${userEmail}" for create/update.
+- You can call multiple tools if needed.
+- For follow-ups ("not just bugs", "what about tasks?"), adjust the previous query appropriately.
+- For greetings or general questions, just respond naturally without tools.`;
+
+      const messages: vscode.LanguageModelChatMessage[] = [
+        vscode.LanguageModelChatMessage.User(systemPrompt),
+      ];
+
+      // Add conversation history
+      const recentHistory = this.chatHistory.slice(-20);
+      for (const msg of recentHistory) {
+        if (msg.role === "user") {
+          messages.push(vscode.LanguageModelChatMessage.User(msg.text));
+        } else {
+          messages.push(vscode.LanguageModelChatMessage.Assistant(msg.text));
         }
-        case "get": {
-          if (!intent.workItemId) {
-            this.sendChatResponse("Which work item? Give me an ID, e.g. \"Show 12345\"");
-            return;
-          }
-          const item = await this.backendClient.getWorkItem(org, project, intent.workItemId, token);
-          if (item) {
-            const details = [
-              `${item.type} #${item.id}: ${item.title}`,
-              `State: ${item.state || "N/A"}`,
-              `Assigned: ${item.assignedTo || "Unassigned"}`,
-              `Priority: ${item.priority || "N/A"}`,
-            ];
-            if (item.remainingWork != null) { details.push(`Remaining: ${item.remainingWork}h`); }
-            if (item.completedWork != null) { details.push(`Completed: ${item.completedWork}h`); }
-            if (item.originalEstimate != null) { details.push(`Estimate: ${item.originalEstimate}h`); }
-            this.sendChatResponse(details.join("\n"));
-          } else {
-            this.sendChatResponse(`Work item #${intent.workItemId} not found.`);
-          }
-          break;
+      }
+
+      const model = models[0];
+
+      // First LLM call — may contain tool calls
+      let response = await model.sendRequest(messages, {}, new vscode.CancellationTokenSource().token);
+      let llmText = "";
+      for await (const chunk of response.text) { llmText += chunk; }
+
+      // Extract and execute tool calls
+      const toolRegex = /```tool\s*\n?([\s\S]*?)\n?```/g;
+      let match;
+      const toolResults: string[] = [];
+
+      while ((match = toolRegex.exec(llmText)) !== null) {
+        try {
+          const toolCall = JSON.parse(match[1].trim());
+          const result = await this.executeTool(org, project, token, toolCall);
+          toolResults.push(result);
+        } catch (e: any) {
+          toolResults.push(`Tool error: ${e.message}`);
         }
-        case "update": {
-          if (!intent.workItemId) {
-            this.sendChatResponse("Which work item? e.g. \"Update 12345 state to Active\"");
-            return;
-          }
-          const req: UpdateWorkItemRequest = {};
-          if (intent.title) { req.title = intent.title; }
-          if (intent.state) { req.state = intent.state; }
-          if (intent.assignedTo) {
-            if (/^(@?me|myself)$/i.test(intent.assignedTo.trim())) {
-              req.assignedTo = await this.authProvider.getAccountName() || intent.assignedTo;
-            } else {
-              req.assignedTo = intent.assignedTo;
-            }
-          }
-          if (intent.priority) { req.priority = intent.priority; }
-          if (intent.remainingWork !== undefined) { req.remainingWork = intent.remainingWork; }
-          if (intent.completedWork !== undefined) { req.completedWork = intent.completedWork; }
-          if (intent.originalEstimate !== undefined) { req.originalEstimate = intent.originalEstimate; }
-          const updated = await this.backendClient.updateWorkItem(org, project, intent.workItemId, req, token);
-          this.sendChatResponse(`✅ Updated #${updated.id}: ${updated.title} (${updated.state})`);
-          break;
-        }
-        case "delete": {
-          if (!intent.workItemId) {
-            this.sendChatResponse("Which work item? e.g. \"Delete 12345\"");
-            return;
-          }
-          const ok = await this.backendClient.deleteWorkItem(org, project, intent.workItemId, token);
-          this.sendChatResponse(ok ? `✅ Deleted #${intent.workItemId}.` : `Failed to delete #${intent.workItemId}. Check permissions.`);
-          break;
-        }
-        case "query": {
-          const wiql = this.buildWiql(intent);
-          const items = await this.safeQuery(org, project, wiql, token);
-          if (items.length === 0) {
-            this.sendChatResponse("No work items found.");
-          } else {
-            const lines = items.slice(0, 15).map(i => `• #${i.id} [${i.type}] ${i.title} (${i.state || "N/A"})`);
-            this.sendChatResponse(`Found ${items.length} item(s):\n${lines.join("\n")}`);
-          }
-          break;
-        }
-        case "aggregate": {
-          const aggWiql = this.buildWiql(intent);
-          const aggItems = await this.safeQuery(org, project, aggWiql, token);
-          if (aggItems.length === 0) {
-            this.sendChatResponse("No work items found matching that criteria.");
-          } else {
-            const fieldMap: Record<string, string> = {
-              remainingWork: "remainingWork",
-              completedWork: "completedWork",
-              originalEstimate: "originalEstimate",
-            };
-            const field = fieldMap[intent.aggregateField || "remainingWork"] || "remainingWork";
-            const values = aggItems.map(i => (i as any)[field]).filter((v: any) => v != null && typeof v === "number") as number[];
-            const op = intent.aggregateOp || "sum";
-            let result: number;
-            let opLabel: string;
-            switch (op) {
-              case "avg": result = values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0; opLabel = "Average"; break;
-              case "min": result = values.length ? Math.min(...values) : 0; opLabel = "Min"; break;
-              case "max": result = values.length ? Math.max(...values) : 0; opLabel = "Max"; break;
-              case "count": result = values.length; opLabel = "Count"; break;
-              default: result = values.reduce((a, b) => a + b, 0); opLabel = "Total"; break;
-            }
-            const fieldLabel = field === "remainingWork" ? "Remaining Work" : field === "completedWork" ? "Completed Work" : "Original Estimate";
-            this.sendChatResponse(`${opLabel} ${fieldLabel}: **${result}h** (across ${aggItems.length} items, ${values.length} with values)`);
-          }
-          break;
-        }
-        default:
-          this.sendChatResponse("I'm not sure what to do. Try \"Create a bug titled ...\" or \"Show my tasks\".");
+      }
+
+      if (toolResults.length > 0) {
+        // Remove tool blocks from the visible text
+        const cleanText = llmText.replace(toolRegex, "").trim();
+
+        // Second LLM call — give it tool results and let it compose a final response
+        messages.push(vscode.LanguageModelChatMessage.Assistant(llmText));
+        messages.push(vscode.LanguageModelChatMessage.User(
+          `Tool results:\n${toolResults.join("\n\n")}\n\nNow respond to the user naturally based on these results. Do NOT include any tool blocks. Just give a clear, helpful answer.`
+        ));
+
+        response = await model.sendRequest(messages, {}, new vscode.CancellationTokenSource().token);
+        let finalText = "";
+        for await (const chunk of response.text) { finalText += chunk; }
+
+        this.sendChatResponse(finalText.trim());
+      } else {
+        // No tool calls — pure conversational response
+        this.sendChatResponse(llmText.replace(toolRegex, "").trim());
       }
     } catch (error: any) {
       this.sendChatResponse(this.friendlyError(error));
     }
   }
 
-  private buildWiql(intent: any): string {
-    let where = intent.queryText || "";
-    // Sanitize common AI mistakes: bare field names → proper WIQL references
-    const fieldFixMap: Record<string, string> = {
-      "AssignedTo": "[System.AssignedTo]",
-      "State": "[System.State]",
-      "Title": "[System.Title]",
-      "WorkItemType": "[System.WorkItemType]",
-      "AreaPath": "[System.AreaPath]",
-      "IterationPath": "[System.IterationPath]",
-      "Priority": "[Microsoft.VSTS.Common.Priority]",
-      "RemainingWork": "[Microsoft.VSTS.Scheduling.RemainingWork]",
-      "CompletedWork": "[Microsoft.VSTS.Scheduling.CompletedWork]",
-      "OriginalEstimate": "[Microsoft.VSTS.Scheduling.OriginalEstimate]",
-    };
-    for (const [bare, full] of Object.entries(fieldFixMap)) {
-      // Match bare field name not already inside brackets
-      const regex = new RegExp(`(?<!\\[System\\.|\\[Microsoft\\.[\\w.]*|\\w)\\b${bare}\\b(?!\\])`, "gi");
-      where = where.replace(regex, full);
+  private async executeTool(org: string, project: string, token: string, tool: any): Promise<string> {
+    switch (tool.tool) {
+      case "query": {
+        const where = tool.where || "[System.AssignedTo] = @Me";
+        const wiql = `SELECT [System.Id] FROM WorkItems WHERE ${where} ORDER BY [System.ChangedDate] DESC`;
+        const items = await this.backendClient.queryWorkItems(org, project, wiql, token);
+        if (items.length === 0) { return "Query returned 0 items."; }
+        const lines = items.slice(0, 20).map(i =>
+          `#${i.id} | ${i.type} | ${i.title} | State: ${i.state || "N/A"} | Assigned: ${i.assignedTo || "Unassigned"} | Priority: ${i.priority || "N/A"}${i.remainingWork != null ? ` | Remaining: ${i.remainingWork}h` : ""}${i.originalEstimate != null ? ` | Estimate: ${i.originalEstimate}h` : ""}`
+        );
+        const more = items.length > 20 ? `\n(${items.length - 20} more items not shown)` : "";
+        return `Query returned ${items.length} items:\n${lines.join("\n")}${more}`;
+      }
+      case "get": {
+        const item = await this.backendClient.getWorkItem(org, project, tool.id, token);
+        if (!item) { return `Work item #${tool.id} not found.`; }
+        return `Work item #${item.id}:\nType: ${item.type}\nTitle: ${item.title}\nState: ${item.state || "N/A"}\nAssigned: ${item.assignedTo || "Unassigned"}\nPriority: ${item.priority || "N/A"}\nArea: ${item.areaPath || "N/A"}\nIteration: ${item.iterationPath || "N/A"}${item.remainingWork != null ? `\nRemaining: ${item.remainingWork}h` : ""}${item.completedWork != null ? `\nCompleted: ${item.completedWork}h` : ""}${item.originalEstimate != null ? `\nEstimate: ${item.originalEstimate}h` : ""}${item.description ? `\nDescription: ${item.description.replace(/<[^>]*>/g, "").substring(0, 200)}` : ""}`;
+      }
+      case "create": {
+        let assignTo = tool.assignedTo;
+        if (assignTo && /^(@?me|myself)$/i.test(assignTo.trim())) {
+          assignTo = await this.authProvider.getAccountName() || undefined;
+        }
+        const item = await this.backendClient.createWorkItem(org, project, {
+          type: tool.type || "Task",
+          title: tool.title || "New Work Item",
+          description: tool.description,
+          assignedTo: assignTo,
+          priority: tool.priority,
+          remainingWork: tool.remainingWork,
+          completedWork: tool.completedWork,
+          originalEstimate: tool.originalEstimate,
+        }, token);
+        if (tool.parentId) {
+          await this.backendClient.addParentLink(org, project, item.id, tool.parentId, token);
+        }
+        return `Created ${item.type} #${item.id}: "${item.title}"`;
+      }
+      case "update": {
+        if (!tool.id) { return "Error: No work item ID provided for update."; }
+        const req: UpdateWorkItemRequest = {};
+        if (tool.title) { req.title = tool.title; }
+        if (tool.state) { req.state = tool.state; }
+        if (tool.assignedTo) {
+          if (/^(@?me|myself)$/i.test(tool.assignedTo.trim())) {
+            req.assignedTo = await this.authProvider.getAccountName() || tool.assignedTo;
+          } else {
+            req.assignedTo = tool.assignedTo;
+          }
+        }
+        if (tool.priority) { req.priority = tool.priority; }
+        if (tool.remainingWork !== undefined) { req.remainingWork = tool.remainingWork; }
+        if (tool.completedWork !== undefined) { req.completedWork = tool.completedWork; }
+        if (tool.originalEstimate !== undefined) { req.originalEstimate = tool.originalEstimate; }
+        const updated = await this.backendClient.updateWorkItem(org, project, tool.id, req, token);
+        return `Updated #${updated.id}: ${updated.title} → ${updated.state}`;
+      }
+      case "delete": {
+        if (!tool.id) { return "Error: No work item ID provided for delete."; }
+        const ok = await this.backendClient.deleteWorkItem(org, project, tool.id, token);
+        return ok ? `Deleted #${tool.id}.` : `Failed to delete #${tool.id}. Check permissions.`;
+      }
+      default:
+        return `Unknown tool: ${tool.tool}`;
     }
-    if (!where || where.trim().length === 0) {
-      where = "[System.AssignedTo] = @Me";
-    }
-    return `SELECT [System.Id] FROM WorkItems WHERE ${where} ORDER BY [System.ChangedDate] DESC`;
   }
 
-  private async safeQuery(org: string, project: string, wiql: string, token: string): Promise<import("./backendClient").WorkItem[]> {
-    try {
-      return await this.backendClient.queryWorkItems(org, project, wiql, token);
-    } catch {
-      // If WIQL fails, fall back to a simple @Me query
-      const fallback = `SELECT [System.Id] FROM WorkItems WHERE [System.AssignedTo] = @Me ORDER BY [System.ChangedDate] DESC`;
-      return await this.backendClient.queryWorkItems(org, project, fallback, token);
-    }
-  }
 
   private friendlyError(error: any): string {
     const msg = error?.message || "Something went wrong.";
-    if (msg.includes("HTTP 400")) {
-      return "I had trouble with that request. Could you rephrase? For example:\n• \"Show my active tasks\"\n• \"Sum remaining work for my items\"";
+    if (msg.includes("session has expired") || msg.includes("sign out")) {
+      return "Your session has expired. Please go to Settings and sign in again.";
     }
-    if (msg.includes("HTTP 401") || msg.includes("Unauthorized")) {
-      return "Your session may have expired. Go to Settings and sign in again.";
-    }
-    if (msg.includes("HTTP 404")) {
-      return "That work item wasn't found. Check the ID and try again.";
-    }
-    if (msg.includes("HTTP 403")) {
+    if (msg.includes("Access denied") || msg.includes("permission")) {
       return "You don't have permission for that operation.";
     }
-    return "Something went wrong. Try rephrasing your request.";
-  }
-
-  private async parseIntent(prompt: string): Promise<any | null> {
-    try {
-      const models = await vscode.lm.selectChatModels({ family: "gpt-4o" });
-      if (models.length === 0) {
-        return this.fallbackParse(prompt);
-      }
-
-      const config = vscode.workspace.getConfiguration("sprintbridge");
-      const userEmail = config.get<string>("userEmail") || await this.authProvider.getAccountName() || "unknown";
-      const areaPath = config.get<string>("areaPath") || "";
-      const org = config.get<string>("organization") || "";
-      const project = config.get<string>("project") || "";
-
-      const model = models[0];
-      const systemPrompt = `You are a JSON parser for Azure DevOps work item operations.
-
-USER CONTEXT:
-- User email: ${userEmail}
-- Organization: ${org}
-- Project: ${project}
-- Default area path: ${areaPath}
-
-When the user says "me", "myself", or "assigned to me", use their email: "${userEmail}".
-
-Given a user message, extract the intent as JSON with these fields:
-- action: "create" | "get" | "update" | "delete" | "query" | "aggregate"
-- workItemId: number (if referencing an existing item)
-- workItemType: string (Bug, Task, User Story, Product Backlog Item, Feature, Epic)
-- title: string (for create/update)
-- description: string (for create/update)
-- assignedTo: string (use actual email, not "me")
-- state: string (New, Optional, Committed, In Progress, In Review, Done)
-- priority: number 1-4
-- remainingWork: number (hours, for create/update)
-- completedWork: number (hours, for create/update)
-- originalEstimate: number (hours, for create/update)
-- queryText: string (WIQL WHERE clause ONLY - no SELECT, no SUM, no aggregates)
-- aggregateField: string (for aggregate action: "remainingWork", "completedWork", or "originalEstimate")
-- aggregateOp: string (for aggregate action: "sum", "avg", "count", "min", "max")
-IMPORTANT: WIQL does NOT support SUM, COUNT, AVG or any aggregate functions. If the user asks for a sum/total/average, use action "aggregate" with the queryText as a WHERE clause and aggregateField/aggregateOp for the calculation.
-Respond with ONLY valid JSON. Use conversation history for context.`;
-
-      const messages: vscode.LanguageModelChatMessage[] = [
-        vscode.LanguageModelChatMessage.User(systemPrompt),
-      ];
-
-      // Add recent chat history for context (last 10 exchanges)
-      const recentHistory = this.chatHistory.slice(-20);
-      for (const msg of recentHistory) {
-        if (msg.role === "user") {
-          messages.push(vscode.LanguageModelChatMessage.User(`Previous user message: "${msg.text}"`));
-        } else {
-          messages.push(vscode.LanguageModelChatMessage.Assistant(msg.text));
-        }
-      }
-
-      messages.push(vscode.LanguageModelChatMessage.User(`Parse this new request: "${prompt}"`));
-
-      const response = await model.sendRequest(messages, {}, new vscode.CancellationTokenSource().token);
-      let text = "";
-      for await (const chunk of response.text) {
-        text += chunk;
-      }
-      text = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-      return JSON.parse(text);
-    } catch {
-      return this.fallbackParse(prompt);
+    if (msg.includes("not found") || msg.includes("Resource not found")) {
+      return "That resource wasn't found. Check the ID or settings and try again.";
     }
-  }
-
-  private fallbackParse(prompt: string): any {
-    const lower = prompt.toLowerCase();
-
-    const getMatch = lower.match(/(?:get|show|view|display)\s+(?:work\s*item\s+)?#?(\d+)/);
-    if (getMatch) { return { action: "get", workItemId: parseInt(getMatch[1]) }; }
-
-    const deleteMatch = lower.match(/(?:delete|remove)\s+(?:work\s*item\s+)?#?(\d+)/);
-    if (deleteMatch) { return { action: "delete", workItemId: parseInt(deleteMatch[1]) }; }
-
-    const updateMatch = lower.match(/(?:update|change|modify|set)\s+(?:work\s*item\s+)?#?(\d+)/);
-    if (updateMatch) { return { action: "update", workItemId: parseInt(updateMatch[1]) }; }
-
-    if (lower.match(/(?:create|add|new|make)\s/)) {
-      const typeMatch = lower.match(/(?:bug|task|user\s*story|feature|epic)/i);
-      const titleMatch = prompt.match(/(?:titled?|called|named|for)\s+["']?(.+?)["']?\s*$/i);
-      return {
-        action: "create",
-        workItemType: typeMatch ? typeMatch[0].trim() : "Task",
-        title: titleMatch ? titleMatch[1] : prompt.replace(/^.*?(?:create|add|new|make)\s+(?:a\s+)?(?:bug|task|user\s*story|feature|epic)?\s*/i, "").trim(),
-      };
-    }
-
-    if (lower.match(/(?:list|query|search|find|show\s+all|my\s)/)) {
-      return { action: "query", queryText: "[System.AssignedTo] = @Me" };
-    }
-
-    return null;
+    return "Something went wrong. Try rephrasing your request, or check Settings to make sure you're signed in.";
   }
 
   private postMessage(msg: any): void {
