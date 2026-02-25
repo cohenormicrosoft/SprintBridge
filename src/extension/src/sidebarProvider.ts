@@ -28,7 +28,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
     const nonce = getNonce();
     const cspSource = webviewView.webview.cspSource;
-    webviewView.webview.html = getWebviewHtml(nonce, cspSource);
+    const iconUri = webviewView.webview.asWebviewUri(
+      vscode.Uri.joinPath(this.extensionUri, "media", "sprintbridge.png")
+    ).toString();
+    webviewView.webview.html = getWebviewHtml(nonce, cspSource, iconUri);
 
     webviewView.webview.onDidReceiveMessage((msg) => this.handleMessage(msg));
   }

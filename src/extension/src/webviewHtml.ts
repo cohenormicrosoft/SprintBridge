@@ -1,10 +1,10 @@
-export function getWebviewHtml(nonce: string, cspSource: string): string {
+export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string): string {
   return /*html*/ `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'none'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
+    content="default-src 'none'; img-src ${cspSource}; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SprintBridge</title>
   <style nonce="${nonce}">
@@ -30,9 +30,9 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); color: var(--fg); background: var(--bg); height: 100%; overflow: hidden; margin: 0; padding: 0; }
-    body { display: flex; flex-direction: column; }
-    #setup-screen { overflow-y: auto; }
-    #main-app { display: flex; flex-direction: column; flex: 1; overflow: hidden; min-height: 0; }
+    body { display: flex; flex-direction: column; position: relative; }
+    #setup-screen { position: absolute; inset: 0; z-index: 10; background: var(--bg); overflow-y: auto; }
+    #main-app { flex-direction: column; flex: 1; overflow: hidden; min-height: 0; }
 
     /* Tabs */
     .tabs { display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0; }
@@ -101,7 +101,19 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
     .chat-msg { margin-bottom: 10px; }
     .chat-msg-user { text-align: right; }
     .chat-msg-user .chat-bubble { background: var(--btn-bg); color: var(--btn-fg); display: inline-block; padding: 6px 10px; border-radius: 10px 10px 2px 10px; max-width: 90%; text-align: left; font-size: 13px; }
-    .chat-msg-ai .chat-bubble { background: var(--input-bg); display: inline-block; padding: 6px 10px; border-radius: 10px 10px 10px 2px; max-width: 90%; text-align: left; font-size: 13px; white-space: pre-wrap; }
+    .chat-msg-ai .chat-bubble { background: var(--input-bg); display: inline-block; padding: 6px 10px; border-radius: 10px 10px 10px 2px; max-width: 90%; text-align: left; font-size: 13px; line-height: 1.5; }
+    .chat-bubble p { margin: 0 0 6px 0; }
+    .chat-bubble p:last-child { margin-bottom: 0; }
+    .chat-bubble strong { font-weight: 600; }
+    .chat-bubble em { font-style: italic; }
+    .chat-bubble code { background: rgba(128,128,128,0.2); padding: 1px 4px; border-radius: 3px; font-family: var(--vscode-editor-font-family, monospace); font-size: 12px; }
+    .chat-bubble pre { background: rgba(128,128,128,0.15); padding: 8px; border-radius: 4px; overflow-x: auto; margin: 6px 0; }
+    .chat-bubble pre code { background: none; padding: 0; }
+    .chat-bubble ul, .chat-bubble ol { margin: 4px 0; padding-left: 18px; }
+    .chat-bubble li { margin-bottom: 2px; }
+    .chat-bubble a { color: var(--btn-bg); text-decoration: underline; }
+    .chat-bubble .wi-tag { display: inline-block; background: var(--btn-bg); color: var(--btn-fg); padding: 1px 6px; border-radius: 3px; font-size: 11px; font-weight: 600; cursor: pointer; }
+    .chat-bubble .wi-tag:hover { opacity: 0.85; }
     .chat-input-row { display: flex; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--border); flex-shrink: 0; }
     .chat-input { flex: 1; background: var(--input-bg); color: var(--input-fg); border: 1px solid var(--input-border); padding: 6px 8px; font-size: 13px; border-radius: 3px; font-family: inherit; }
 
@@ -154,7 +166,7 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
   <!-- Setup screen (shown when not configured) -->
   <div id="setup-screen" style="display:none;">
     <div class="setup-overlay">
-      <div class="setup-icon">🌉</div>
+      <div class="setup-icon"><img src="${iconUri}" alt="SprintBridge" style="width:64px;height:64px;border-radius:8px;" /></div>
       <h2>Welcome to SprintBridge</h2>
       <p>Connect to your Azure DevOps organization to get started.</p>
       <div class="form-group">
@@ -179,7 +191,7 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
   </div>
 
   <!-- Main app (hidden until configured) -->
-  <div id="main-app">
+  <div id="main-app" style="display:none;">
   <div class="tabs">
     <button class="tab active" data-tab="workitems">Work Items</button>
     <button class="tab" data-tab="board">Board</button>
@@ -340,7 +352,7 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
     }
     function showMain(org, project, areaPath, userEmail) {
       setupScreen.style.display = 'none';
-      mainApp.style.display = '';
+      mainApp.style.display = 'flex';
       if (org) document.getElementById('settings-org').value = org;
       if (project) document.getElementById('settings-project').value = project;
       if (areaPath) {
@@ -714,10 +726,44 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
       div.className = 'chat-msg chat-msg-' + role;
       const bubble = document.createElement('div');
       bubble.className = 'chat-bubble';
-      bubble.textContent = text;
+      if (role === 'ai') {
+        bubble.innerHTML = renderMarkdown(text);
+      } else {
+        bubble.textContent = text;
+      }
       div.appendChild(bubble);
       chatMessages.appendChild(div);
       chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    function renderMarkdown(text) {
+      if (!text) return '';
+      // Escape HTML first
+      let s = esc(text);
+      // Code blocks (triple backtick)
+      s = s.replace(/\`\`\`([\\s\\S]*?)\`\`\`/g, function(m, code) {
+        return '<pre><code>' + code.trim() + '</code></pre>';
+      });
+      // Inline code
+      s = s.replace(/\`([^\`]+)\`/g, '<code>$1</code>');
+      // Bold
+      s = s.replace(/\\*\\*(.+?)\\*\\*/g, '<strong>$1</strong>');
+      // Italic
+      s = s.replace(/\\*(.+?)\\*/g, '<em>$1</em>');
+      // Work item IDs — make them clickable tags
+      s = s.replace(/#(\\d{4,})/g, '<span class="wi-tag" data-id="$1">#$1</span>');
+      // Unordered lists
+      s = s.replace(/(^|\\n)[•\\-\\*]\\s+(.+)/g, function(m, pre, item) {
+        return (pre || '') + '<li>' + item + '</li>';
+      });
+      s = s.replace(/((?:<li>.*<\\/li>\\s*)+)/g, '<ul>$1</ul>');
+      // Paragraphs — split on double newlines
+      s = s.split(/\\n{2,}/).map(function(p) {
+        p = p.trim();
+        if (!p || p.startsWith('<pre') || p.startsWith('<ul') || p.startsWith('<ol')) return p;
+        return '<p>' + p.replace(/\\n/g, '<br>') + '</p>';
+      }).join('');
+      return s;
     }
 
     function sendChat() {
@@ -730,6 +776,13 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
 
     document.getElementById('chat-send').addEventListener('click', sendChat);
     chatInput.addEventListener('keydown', e => { if (e.key === 'Enter') sendChat(); });
+    chatMessages.addEventListener('click', function(e) {
+      const tag = e.target.closest('.wi-tag');
+      if (tag) {
+        const id = tag.getAttribute('data-id');
+        if (id) vscode.postMessage({ command: 'copyToClipboard', text: id });
+      }
+    });
 
     // --- Message handler ---
     window.addEventListener('message', event => {
