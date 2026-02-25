@@ -1,34 +1,16 @@
 import * as vscode from "vscode";
 import { BackendClient } from "./backendClient";
 import { AuthProvider } from "./auth";
-import { SidecarManager } from "./sidecar";
 import { registerChatParticipant } from "./chatParticipant";
 import { SidebarProvider } from "./sidebarProvider";
-
-let sidecar: SidecarManager;
 
 export async function activate(context: vscode.ExtensionContext) {
   const outputChannel = vscode.window.createOutputChannel("SprintBridge");
   outputChannel.appendLine("SprintBridge extension activating...");
 
-  const config = vscode.workspace.getConfiguration("sprintbridge");
-  const port = config.get<number>("backendPort") || 5059;
-
-  // Initialize components
+  // Initialize components (no backend needed — calls ADO directly)
   const authProvider = new AuthProvider();
-  const backendClient = new BackendClient(port);
-  sidecar = new SidecarManager(outputChannel, port);
-
-  // Start the C# backend sidecar
-  try {
-    await sidecar.start(context.extensionPath);
-    outputChannel.appendLine("Backend started successfully.");
-  } catch (error: any) {
-    outputChannel.appendLine(`Failed to start backend: ${error.message}`);
-    vscode.window.showWarningMessage(
-      "SprintBridge: Backend failed to start. Make sure .NET 8 SDK is installed."
-    );
-  }
+  const backendClient = new BackendClient();
 
   // Register chat participant
   const chatParticipant = registerChatParticipant(
@@ -54,6 +36,7 @@ export async function activate(context: vscode.ExtensionContext) {
   // Register commands
   context.subscriptions.push(
     vscode.commands.registerCommand("sprintbridge.configure", async () => {
+      const config = vscode.workspace.getConfiguration("sprintbridge");
       const org = await vscode.window.showInputBox({
         prompt: "Enter your Azure DevOps organization name",
         placeHolder: "e.g., msazure",
@@ -95,7 +78,5 @@ export async function activate(context: vscode.ExtensionContext) {
 }
 
 export function deactivate() {
-  if (sidecar) {
-    sidecar.stop();
-  }
+  // No cleanup needed — no backend process to stop
 }

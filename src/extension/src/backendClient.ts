@@ -1,4 +1,4 @@
-import * as http from "http";
+import * as https from "https";
 
 export interface WorkItem {
   id: number;
@@ -46,21 +46,10 @@ export interface UpdateWorkItemRequest {
   originalEstimate?: number;
 }
 
+const ADO_API_VERSION = "7.1";
+
 export class BackendClient {
-  private baseUrl: string;
-
-  constructor(port: number = 5059) {
-    this.baseUrl = `http://localhost:${port}`;
-  }
-
-  async healthCheck(): Promise<boolean> {
-    try {
-      const res = await this.request("GET", "/health");
-      return res.status === "healthy";
-    } catch {
-      return false;
-    }
-  }
+  private baseUrl = "https://dev.azure.com";
 
   async getWorkItem(
     organization: string,
@@ -69,12 +58,12 @@ export class BackendClient {
     token: string
   ): Promise<WorkItem | null> {
     try {
-      return await this.request(
+      const json = await this.adoRequest(
         "GET",
-        `/api/workitems/${organization}/${project}/${id}`,
-        undefined,
+        `/${organization}/${project}/_apis/wit/workitems/${id}?$expand=all&api-version=${ADO_API_VERSION}`,
         token
       );
+      return mapWorkItem(json);
     } catch {
       return null;
     }
@@ -86,12 +75,26 @@ export class BackendClient {
     request: CreateWorkItemRequest,
     token: string
   ): Promise<WorkItem> {
-    return await this.request(
+    const patchDoc: any[] = [];
+    patchDoc.push({ op: "add", path: "/fields/System.Title", value: request.title });
+    if (request.description) { patchDoc.push({ op: "add", path: "/fields/System.Description", value: request.description }); }
+    if (request.assignedTo) { patchDoc.push({ op: "add", path: "/fields/System.AssignedTo", value: request.assignedTo }); }
+    if (request.state) { patchDoc.push({ op: "add", path: "/fields/System.State", value: request.state }); }
+    if (request.areaPath) { patchDoc.push({ op: "add", path: "/fields/System.AreaPath", value: request.areaPath }); }
+    if (request.iterationPath) { patchDoc.push({ op: "add", path: "/fields/System.IterationPath", value: request.iterationPath }); }
+    if (request.priority) { patchDoc.push({ op: "add", path: "/fields/Microsoft.VSTS.Common.Priority", value: request.priority }); }
+    if (request.remainingWork != null) { patchDoc.push({ op: "add", path: "/fields/Microsoft.VSTS.Scheduling.RemainingWork", value: request.remainingWork }); }
+    if (request.completedWork != null) { patchDoc.push({ op: "add", path: "/fields/Microsoft.VSTS.Scheduling.CompletedWork", value: request.completedWork }); }
+    if (request.originalEstimate != null) { patchDoc.push({ op: "add", path: "/fields/Microsoft.VSTS.Scheduling.OriginalEstimate", value: request.originalEstimate }); }
+
+    const json = await this.adoRequest(
       "POST",
-      `/api/workitems/${organization}/${project}`,
-      request,
-      token
+      `/${organization}/${project}/_apis/wit/workitems/$${request.type}?api-version=${ADO_API_VERSION}`,
+      token,
+      patchDoc,
+      "application/json-patch+json"
     );
+    return mapWorkItem(json);
   }
 
   async updateWorkItem(
@@ -101,12 +104,32 @@ export class BackendClient {
     request: UpdateWorkItemRequest,
     token: string
   ): Promise<WorkItem> {
-    return await this.request(
+    const patchDoc: any[] = [];
+    if (request.title != null) { patchDoc.push({ op: "add", path: "/fields/System.Title", value: request.title }); }
+    if (request.description != null) { patchDoc.push({ op: "add", path: "/fields/System.Description", value: request.description }); }
+    if (request.assignedTo != null) { patchDoc.push({ op: "add", path: "/fields/System.AssignedTo", value: request.assignedTo }); }
+    if (request.state != null) { patchDoc.push({ op: "add", path: "/fields/System.State", value: request.state }); }
+    if (request.areaPath != null) { patchDoc.push({ op: "add", path: "/fields/System.AreaPath", value: request.areaPath }); }
+    if (request.iterationPath != null) { patchDoc.push({ op: "add", path: "/fields/System.IterationPath", value: request.iterationPath }); }
+    if (request.priority != null) { patchDoc.push({ op: "add", path: "/fields/Microsoft.VSTS.Common.Priority", value: request.priority }); }
+    if (request.remainingWork != null) { patchDoc.push({ op: "add", path: "/fields/Microsoft.VSTS.Scheduling.RemainingWork", value: request.remainingWork }); }
+    if (request.completedWork != null) { patchDoc.push({ op: "add", path: "/fields/Microsoft.VSTS.Scheduling.CompletedWork", value: request.completedWork }); }
+    if (request.originalEstimate != null) { patchDoc.push({ op: "add", path: "/fields/Microsoft.VSTS.Scheduling.OriginalEstimate", value: request.originalEstimate }); }
+
+    if (patchDoc.length === 0) {
+      const item = await this.getWorkItem(organization, project, id, token);
+      if (!item) { throw new Error(`Work item #${id} not found`); }
+      return item;
+    }
+
+    const json = await this.adoRequest(
       "PATCH",
-      `/api/workitems/${organization}/${project}/${id}`,
-      request,
-      token
+      `/${organization}/${project}/_apis/wit/workitems/${id}?api-version=${ADO_API_VERSION}`,
+      token,
+      patchDoc,
+      "application/json-patch+json"
     );
+    return mapWorkItem(json);
   }
 
   async deleteWorkItem(
@@ -116,10 +139,9 @@ export class BackendClient {
     token: string
   ): Promise<boolean> {
     try {
-      await this.request(
+      await this.adoRequest(
         "DELETE",
-        `/api/workitems/${organization}/${project}/${id}`,
-        undefined,
+        `/${organization}/${project}/_apis/wit/workitems/${id}?api-version=${ADO_API_VERSION}`,
         token
       );
       return true;
@@ -134,34 +156,51 @@ export class BackendClient {
     wiql: string,
     token: string
   ): Promise<WorkItem[]> {
-    return await this.request(
+    const queryResult = await this.adoRequest(
       "POST",
-      `/api/workitems/${organization}/${project}/query`,
-      { wiql },
+      `/${organization}/${project}/_apis/wit/wiql?api-version=${ADO_API_VERSION}`,
+      token,
+      { query: wiql }
+    );
+
+    const items = queryResult?.workItems;
+    if (!items || !Array.isArray(items) || items.length === 0) { return []; }
+
+    const ids = items.slice(0, 50).map((wi: any) => wi.id);
+    const idsParam = ids.join(",");
+
+    const detailsJson = await this.adoRequest(
+      "GET",
+      `/${organization}/${project}/_apis/wit/workitems?ids=${idsParam}&$expand=all&api-version=${ADO_API_VERSION}`,
       token
     );
+
+    const values = detailsJson?.value;
+    if (!values || !Array.isArray(values)) { return []; }
+    return values.map(mapWorkItem);
   }
 
-  private request(
+  private adoRequest(
     method: string,
     path: string,
+    token: string,
     body?: unknown,
-    token?: string
+    contentType: string = "application/json"
   ): Promise<any> {
     return new Promise((resolve, reject) => {
-      const url = new URL(path, this.baseUrl);
+      const bodyStr = body ? JSON.stringify(body) : undefined;
       const headers: Record<string, string> = {
-        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`,
       };
-      if (token) {
-        headers["Authorization"] = `Bearer ${token}`;
+      if (bodyStr) {
+        headers["Content-Type"] = contentType;
+        headers["Content-Length"] = Buffer.byteLength(bodyStr).toString();
       }
 
-      const req = http.request(
+      const req = https.request(
         {
-          hostname: url.hostname,
-          port: url.port,
-          path: url.pathname,
+          hostname: "dev.azure.com",
+          path,
           method,
           headers,
         },
@@ -176,21 +215,58 @@ export class BackendClient {
                 resolve(data);
               }
             } else {
-              reject(
-                new Error(
-                  `HTTP ${res.statusCode}: ${data || res.statusMessage}`
-                )
-              );
+              reject(new Error(`HTTP ${res.statusCode}: ${data || res.statusMessage}`));
             }
           });
         }
       );
 
       req.on("error", reject);
-      if (body) {
-        req.write(JSON.stringify(body));
-      }
+      if (bodyStr) { req.write(bodyStr); }
       req.end();
     });
   }
+}
+
+function mapWorkItem(json: any): WorkItem {
+  const fields = json.fields || {};
+  const assignedTo = fields["System.AssignedTo"];
+  let assignedToStr: string | undefined;
+  if (assignedTo && typeof assignedTo === "object") {
+    assignedToStr = assignedTo.displayName || assignedTo.uniqueName;
+  } else if (typeof assignedTo === "string") {
+    assignedToStr = assignedTo;
+  }
+
+  let parentId: number | undefined;
+  if (json.relations && Array.isArray(json.relations)) {
+    for (const rel of json.relations) {
+      if (rel.rel === "System.LinkTypes.Hierarchy-Reverse" && rel.url) {
+        const lastSlash = rel.url.lastIndexOf("/");
+        if (lastSlash >= 0) {
+          const parsed = parseInt(rel.url.substring(lastSlash + 1), 10);
+          if (!isNaN(parsed)) { parentId = parsed; }
+        }
+      }
+    }
+  }
+
+  return {
+    id: json.id,
+    type: fields["System.WorkItemType"] || "",
+    title: fields["System.Title"] || "",
+    description: fields["System.Description"] || undefined,
+    assignedTo: assignedToStr,
+    state: fields["System.State"] || undefined,
+    areaPath: fields["System.AreaPath"] || undefined,
+    iterationPath: fields["System.IterationPath"] || undefined,
+    priority: fields["Microsoft.VSTS.Common.Priority"] || undefined,
+    url: json.url || undefined,
+    createdDate: fields["System.CreatedDate"] || undefined,
+    changedDate: fields["System.ChangedDate"] || undefined,
+    parentId,
+    remainingWork: fields["Microsoft.VSTS.Scheduling.RemainingWork"] ?? undefined,
+    completedWork: fields["Microsoft.VSTS.Scheduling.CompletedWork"] ?? undefined,
+    originalEstimate: fields["Microsoft.VSTS.Scheduling.OriginalEstimate"] ?? undefined,
+  };
 }
