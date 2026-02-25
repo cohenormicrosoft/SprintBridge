@@ -220,7 +220,6 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
       <select class="filter-select" id="board-iteration" style="flex:1;min-width:120px;">
         <option value="">Enter team → load sprints</option>
       </select>
-      <input class="filter-input" id="board-areapath" placeholder="Area path" style="flex:1;min-width:100px;" />
       <label style="display:flex;align-items:center;gap:4px;font-size:12px;white-space:nowrap;"><input type="checkbox" id="board-me-filter" /> Me</label>
       <button class="btn btn-primary" id="board-load" style="padding:4px 12px;">Load</button>
     </div>
@@ -340,7 +339,6 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
       if (areaPath) {
         document.getElementById('settings-areapath').value = areaPath;
         document.getElementById('filter-areapath').value = areaPath;
-        document.getElementById('board-areapath').value = areaPath;
       }
       if (userEmail) document.getElementById('settings-email').value = userEmail;
       loadWorkItems();
@@ -586,7 +584,6 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
     // --- Sprint Board ---
     const boardTeamInput = document.getElementById('board-team');
     const boardIterSel = document.getElementById('board-iteration');
-    const boardAreaInput = document.getElementById('board-areapath');
     let boardTeamTimer = null;
 
     boardTeamInput.addEventListener('input', () => {
@@ -614,8 +611,8 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
       document.getElementById('board-container').innerHTML = '<div class="loading">Loading board...</div>';
       vscode.postMessage({
         command: 'getBoardItems',
+        team: team,
         iterationPath: iteration,
-        areaPath: boardAreaInput.value.trim() || undefined,
         assignedToMe: document.getElementById('board-me-filter').checked
       });
     });

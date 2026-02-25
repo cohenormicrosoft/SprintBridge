@@ -251,8 +251,25 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     if (msg.iterationPath) {
       conditions.push(`[System.IterationPath] = '${msg.iterationPath}'`);
     }
-    if (msg.areaPath) {
-      conditions.push(`[System.AreaPath] UNDER '${msg.areaPath}'`);
+    // Auto-scope to team's area paths
+    if (msg.team) {
+      try {
+        const teamFields = await this.backendClient.getTeamFieldValues(org, project, msg.team, token);
+        if (teamFields.values.length > 0) {
+          const areaClauses = teamFields.values.map(v =>
+            v.includeChildren
+              ? `[System.AreaPath] UNDER '${v.value}'`
+              : `[System.AreaPath] = '${v.value}'`
+          );
+          if (areaClauses.length === 1) {
+            conditions.push(areaClauses[0]);
+          } else {
+            conditions.push(`(${areaClauses.join(" OR ")})`);
+          }
+        }
+      } catch {
+        // If team field values fail, fall back to project scope
+      }
     }
     if (msg.assignedToMe) {
       conditions.push(`[System.AssignedTo] = @Me`);

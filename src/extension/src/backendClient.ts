@@ -242,6 +242,23 @@ export class BackendClient {
     return items.map((t: any) => ({ id: t.id, name: t.name }));
   }
 
+  async getTeamFieldValues(
+    organization: string,
+    project: string,
+    team: string,
+    token: string
+  ): Promise<{ defaultValue: string; values: { value: string; includeChildren: boolean }[] }> {
+    const json = await this.adoRequest(
+      "GET",
+      `/${organization}/${project}/${encodeURIComponent(team)}/_apis/work/teamsettings/teamfieldvalues?api-version=${ADO_API_VERSION}`,
+      token
+    );
+    return {
+      defaultValue: json?.defaultValue || "",
+      values: (json?.values || []).map((v: any) => ({ value: v.value, includeChildren: v.includeChildren })),
+    };
+  }
+
   private adoRequest(
     method: string,
     path: string,
