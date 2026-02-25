@@ -154,11 +154,12 @@ export class BackendClient {
     organization: string,
     project: string,
     wiql: string,
-    token: string
+    token: string,
+    top: number = 200
   ): Promise<WorkItem[]> {
     const queryResult = await this.adoRequest(
       "POST",
-      `/${organization}/${project}/_apis/wit/wiql?api-version=${ADO_API_VERSION}`,
+      `/${organization}/${project}/_apis/wit/wiql?$top=${top}&api-version=${ADO_API_VERSION}`,
       token,
       { query: wiql }
     );
