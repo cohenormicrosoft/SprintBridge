@@ -353,6 +353,40 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           }
           break;
         }
+        case "aggregate": {
+          const aggConditions: string[] = [];
+          if (intent.queryText) {
+            aggConditions.push(intent.queryText);
+          } else {
+            aggConditions.push("[System.AssignedTo] = @Me");
+          }
+          const aggWiql = `SELECT [System.Id] FROM WorkItems WHERE ${aggConditions.join(" AND ")} ORDER BY [System.ChangedDate] DESC`;
+          const aggItems = await this.backendClient.queryWorkItems(org, project, aggWiql, token);
+          if (aggItems.length === 0) {
+            this.sendChatResponse("No work items found matching that criteria.");
+          } else {
+            const fieldMap: Record<string, keyof typeof aggItems[0]> = {
+              remainingWork: "remainingWork",
+              completedWork: "completedWork",
+              originalEstimate: "originalEstimate",
+            };
+            const field = fieldMap[intent.aggregateField || "remainingWork"] || "remainingWork";
+            const values = aggItems.map(i => (i as any)[field]).filter((v: any) => v != null && typeof v === "number") as number[];
+            const op = intent.aggregateOp || "sum";
+            let result: number;
+            let opLabel: string;
+            switch (op) {
+              case "avg": result = values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0; opLabel = "Average"; break;
+              case "min": result = values.length ? Math.min(...values) : 0; opLabel = "Min"; break;
+              case "max": result = values.length ? Math.max(...values) : 0; opLabel = "Max"; break;
+              case "count": result = values.length; opLabel = "Count"; break;
+              default: result = values.reduce((a, b) => a + b, 0); opLabel = "Total"; break;
+            }
+            const fieldLabel = field === "remainingWork" ? "Remaining Work" : field === "completedWork" ? "Completed Work" : "Original Estimate";
+            this.sendChatResponse(`${opLabel} ${fieldLabel}: **${result}h** (across ${aggItems.length} items, ${values.length} with values)`);
+          }
+          break;
+        }
         default:
           this.sendChatResponse("I'm not sure what to do. Try \"Create a bug titled ...\" or \"Show my tasks\".");
       }
@@ -386,18 +420,21 @@ USER CONTEXT:
 When the user says "me", "myself", or "assigned to me", use their email: "${userEmail}".
 
 Given a user message, extract the intent as JSON with these fields:
-- action: "create" | "get" | "update" | "delete" | "query"
+- action: "create" | "get" | "update" | "delete" | "query" | "aggregate"
 - workItemId: number (if referencing an existing item)
-- workItemType: string (Bug, Task, User Story, Feature, Epic)
+- workItemType: string (Bug, Task, User Story, Product Backlog Item, Feature, Epic)
 - title: string (for create/update)
 - description: string (for create/update)
 - assignedTo: string (use actual email, not "me")
-- state: string (New, Active, Resolved, Closed)
+- state: string (New, Optional, Committed, In Progress, In Review, Done)
 - priority: number 1-4
 - remainingWork: number (hours, for create/update)
 - completedWork: number (hours, for create/update)
 - originalEstimate: number (hours, for create/update)
-- queryText: string (WIQL WHERE clause)
+- queryText: string (WIQL WHERE clause ONLY - no SELECT, no SUM, no aggregates)
+- aggregateField: string (for aggregate action: "remainingWork", "completedWork", or "originalEstimate")
+- aggregateOp: string (for aggregate action: "sum", "avg", "count", "min", "max")
+IMPORTANT: WIQL does NOT support SUM, COUNT, AVG or any aggregate functions. If the user asks for a sum/total/average, use action "aggregate" with the queryText as a WHERE clause and aggregateField/aggregateOp for the calculation.
 Respond with ONLY valid JSON. Use conversation history for context.`;
 
       const messages: vscode.LanguageModelChatMessage[] = [
