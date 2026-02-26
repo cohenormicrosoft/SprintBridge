@@ -112,8 +112,10 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
     .chat-bubble ul, .chat-bubble ol { margin: 4px 0; padding-left: 18px; }
     .chat-bubble li { margin-bottom: 2px; }
     .chat-bubble a { color: var(--btn-bg); text-decoration: underline; }
-    .chat-bubble .wi-tag { display: inline-block; background: var(--btn-bg); color: var(--btn-fg); padding: 1px 6px; border-radius: 3px; font-size: 11px; font-weight: 600; cursor: pointer; }
-    .chat-bubble .wi-tag:hover { opacity: 0.85; }
+    .chat-bubble .wi-tag { display: inline-block; background: var(--btn-bg); color: var(--btn-fg); padding: 1px 6px; border-radius: 3px; font-size: 11px; font-weight: 600; cursor: pointer; text-decoration: none; }
+    .chat-bubble .wi-tag:hover { opacity: 0.85; text-decoration: underline; }
+    .wi-link { color: var(--link); cursor: pointer; text-decoration: underline; font-weight: 600; }
+    .wi-link:hover { opacity: 0.8; }
     .chat-input-row { display: flex; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--border); flex-shrink: 0; }
     .chat-input { flex: 1; background: var(--input-bg); color: var(--input-fg); border: 1px solid var(--input-border); padding: 6px 8px; font-size: 13px; border-radius: 3px; font-family: inherit; }
 
@@ -147,7 +149,7 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
     .board-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.15); transform: translateY(-1px); }
     .board-card:active { cursor: grabbing; opacity: 0.7; transform: none; box-shadow: none; }
     .board-card.drag-over { border-top: 2px solid var(--btn-bg); }
-    .board-card-id { opacity: 0.5; font-size: 10px; cursor: pointer; font-family: var(--vscode-editor-font-family, monospace); }
+    .board-card-id { opacity: 0.7; font-size: 10px; cursor: pointer; font-family: var(--vscode-editor-font-family, monospace); color: var(--link); }
     .board-card-id:hover { opacity: 1; text-decoration: underline; }
     .board-card-title { margin-top: 4px; font-weight: 500; line-height: 1.3; }
     .board-card-meta { margin-top: 4px; opacity: 0.55; font-size: 11px; display: flex; align-items: center; gap: 4px; }
@@ -361,6 +363,14 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
     const state = vscode.getState() || { tab: 'workitems', chatHistory: [] };
+
+    // Build an ADO work item URL from current settings
+    function adoUrl(id) {
+      const org = (document.getElementById('settings-org') || {}).value || '';
+      const proj = (document.getElementById('settings-project') || {}).value || '';
+      if (!org || !proj) return '';
+      return 'https://dev.azure.com/' + encodeURIComponent(org) + '/' + encodeURIComponent(proj) + '/_workitems/edit/' + id;
+    }
 
     // --- Setup / Config ---
     const setupScreen = document.getElementById('setup-screen');
@@ -761,17 +771,15 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
         });
       });
 
-      // Click to copy work item ID
+      // Click work item ID to open in ADO
       container.querySelectorAll('.board-card-id[data-copy-id]').forEach(el => {
         el.addEventListener('click', (e) => {
           e.stopPropagation();
           const id = el.getAttribute('data-copy-id');
-          navigator.clipboard.writeText(id).then(() => {
-            const toast = document.getElementById('copy-toast');
-            toast.textContent = 'Copied #' + id;
-            toast.style.opacity = '1';
-            setTimeout(() => { toast.style.opacity = '0'; }, 1200);
-          });
+          const url = adoUrl(id);
+          if (url) {
+            vscode.postMessage({ command: 'openExternal', url });
+          }
         });
       });
     }
@@ -839,7 +847,19 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
       const tag = e.target.closest('.wi-tag');
       if (tag) {
         const id = tag.getAttribute('data-id');
-        if (id) vscode.postMessage({ command: 'copyToClipboard', text: id });
+        const url = adoUrl(id);
+        if (url) {
+          vscode.postMessage({ command: 'openExternal', url });
+        }
+      }
+    });
+
+    // Global handler: clickable work item links anywhere in the page
+    document.addEventListener('click', function(e) {
+      const link = e.target.closest('.wi-link[data-url]');
+      if (link) {
+        e.preventDefault();
+        vscode.postMessage({ command: 'openExternal', url: link.getAttribute('data-url') });
       }
     });
 
@@ -866,7 +886,8 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
           break;
         case 'workItemCreated':
           document.getElementById('create-submit').disabled = false;
-          document.getElementById('create-status').innerHTML = '<div class="success-msg">\\u2705 Created #' + msg.item.id + ': ' + esc(msg.item.title) + '</div>';
+          var createUrl = adoUrl(msg.item.id);
+          document.getElementById('create-status').innerHTML = '<div class="success-msg">\\u2705 Created ' + (createUrl ? '<a class="wi-link" data-url="' + escAttr(createUrl) + '">#' + msg.item.id + '</a>' : '#' + msg.item.id) + ': ' + esc(msg.item.title) + '</div>';
           document.getElementById('create-title').value = '';
           document.getElementById('create-desc').value = '';
           document.getElementById('create-assigned').value = '';
@@ -884,7 +905,8 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
           if (detailEl) {
             const toast = document.createElement('div');
             toast.className = 'success-msg';
-            toast.textContent = '\\u2705 Work item #' + msg.item.id + ' updated successfully!';
+            var updateUrl = adoUrl(msg.item.id);
+            toast.innerHTML = '\\u2705 Work item ' + (updateUrl ? '<a class="wi-link" data-url="' + escAttr(updateUrl) + '">#' + msg.item.id + '</a>' : '#' + msg.item.id) + ' updated successfully!';
             detailEl.insertBefore(toast, detailEl.firstChild);
             setTimeout(() => toast.remove(), 4000);
           }

@@ -91,6 +91,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       return;
     }
 
+    if (msg.command === "openExternal" && msg.url) {
+      vscode.env.openExternal(vscode.Uri.parse(msg.url));
+      return;
+    }
+
     const config = vscode.workspace.getConfiguration("sprintbridge");
     const org = config.get<string>("organization");
     const project = config.get<string>("project");
@@ -362,7 +367,8 @@ SPECIAL ASSIGNEES:
 GUIDELINES:
 - Be conversational and helpful. Respond naturally, not just with raw data.
 - When a tool action succeeds (create, update, delete, assign), always start with ✅ and make the confirmation bold, e.g. "✅ **Created Bug #12345: Login crash**". Keep it concise and celebratory.
-- When showing query results, summarize them clearly.
+- Always reference work items with #ID format (e.g. #12345) — these become clickable links in the UI that open the work item in Azure DevOps.
+- When showing query results, summarize them clearly. Include #ID for each item so users can click to open them.
 - If a query returns no results, suggest broadening it.
 - For aggregations (sum, average, etc.), use the "query" tool to get items, then you'll receive the data and can compute the answer yourself.
 - You can call multiple tools if needed.
