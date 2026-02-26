@@ -121,7 +121,12 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
     .empty-state { text-align: center; padding: 30px 15px; opacity: 0.6; font-size: 13px; }
     .loading { text-align: center; padding: 20px; opacity: 0.6; }
     .error-msg { color: var(--error); padding: 8px 10px; font-size: 12px; }
-    .success-msg { color: #4ec94e; padding: 8px 10px; font-size: 12px; }
+    .success-msg { color: #4ec94e; font-weight: 700; padding: 10px 12px; font-size: 13px; border-left: 3px solid #4ec94e; background: rgba(78, 201, 78, 0.08); border-radius: 3px; margin: 4px 0; }
+    .copilot-assign-label { display: flex; align-items: center; gap: 4px; margin-top: 4px; font-size: 12px; cursor: pointer; opacity: 0.85; }
+    .copilot-assign-label:hover { opacity: 1; }
+    .copilot-assign-label input[type="checkbox"] { margin: 0; cursor: pointer; }
+    .copilot-icon { font-size: 13px; }
+    .chat-bubble .success-line { color: #4ec94e; font-weight: 700; }
 
     /* Sprint Board */
     .board-columns { display: flex; gap: 6px; padding: 8px; height: 100%; overflow-x: auto; min-height: 0; }
@@ -273,6 +278,7 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
       <div class="form-group">
         <label>Assigned To</label>
         <input class="form-input" id="create-assigned" placeholder="e.g. user@example.com" />
+        <label class="copilot-assign-label"><input type="checkbox" id="create-assign-copilot" /> <span class="copilot-icon">🤖</span> Assign to GitHub Copilot</label>
       </div>
       <div class="form-group">
         <label>Priority</label>
@@ -392,6 +398,7 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
     });
 
     // Tab switching
+    const COPILOT_IDENTITY = 'GitHub Copilot <66dda6c5-07d0-4484-9979-116241219397@72f988bf-86f1-41af-91ab-2d7cd011db47>';
     document.querySelectorAll('.tab').forEach(tab => {
       tab.addEventListener('click', () => {
         document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -539,7 +546,8 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
           '<div id="edit-status"></div>' +
           '<div class="form-group"><label>Title</label><input class="form-input" id="edit-title" value="' + escAttr(item.title) + '" /></div>' +
           '<div class="form-group"><label>State</label><input class="form-input" id="edit-state" value="' + escAttr(item.state || '') + '" /></div>' +
-          '<div class="form-group"><label>Assigned To</label><input class="form-input" id="edit-assigned" value="' + escAttr(item.assignedTo || '') + '" /></div>' +
+          '<div class="form-group"><label>Assigned To</label><input class="form-input" id="edit-assigned" value="' + escAttr(item.assignedTo || '') + '" />' +
+            '<label class="copilot-assign-label"><input type="checkbox" id="edit-assign-copilot"' + (item.assignedTo && item.assignedTo.includes('GitHub Copilot') ? ' checked' : '') + ' /> <span class="copilot-icon">🤖</span> Assign to GitHub Copilot</label></div>' +
           '<div class="form-group"><label>Priority</label><select class="form-select" id="edit-priority">' +
             '<option value="">Not set</option>' +
             [1,2,3,4].map(p => '<option value="' + p + '"' + (p === item.priority ? ' selected' : '') + '>' + p + '</option>').join('') +
@@ -552,6 +560,20 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
         '</div>';
 
       detail.querySelector('.detail-back').addEventListener('click', () => showDetail(item));
+
+      const editCopilotCb = document.getElementById('edit-assign-copilot');
+      const editAssignedInput = document.getElementById('edit-assigned');
+      if (editCopilotCb.checked) { editAssignedInput.disabled = true; }
+      editCopilotCb.addEventListener('change', () => {
+        if (editCopilotCb.checked) {
+          editAssignedInput.value = COPILOT_IDENTITY;
+          editAssignedInput.disabled = true;
+        } else {
+          editAssignedInput.value = item.assignedTo || '';
+          editAssignedInput.disabled = false;
+        }
+      });
+
       detail.querySelector('#edit-save').addEventListener('click', () => {
         const updates = {};
         const newTitle = document.getElementById('edit-title').value;
@@ -581,6 +603,19 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
     }
 
     // --- Create ---
+    const copilotCheckbox = document.getElementById('create-assign-copilot');
+    const assignedInput = document.getElementById('create-assigned');
+
+    copilotCheckbox.addEventListener('change', () => {
+      if (copilotCheckbox.checked) {
+        assignedInput.value = COPILOT_IDENTITY;
+        assignedInput.disabled = true;
+      } else {
+        assignedInput.value = '';
+        assignedInput.disabled = false;
+      }
+    });
+
     document.getElementById('create-submit').addEventListener('click', () => {
       const title = document.getElementById('create-title').value.trim();
       if (!title) {
@@ -589,12 +624,13 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
       }
       document.getElementById('create-submit').disabled = true;
       document.getElementById('create-status').innerHTML = '<div class="loading">Creating...</div>';
+      const assignedTo = copilotCheckbox.checked ? COPILOT_IDENTITY : (assignedInput.value || undefined);
       vscode.postMessage({
         command: 'createWorkItem',
         type: document.getElementById('create-type').value,
         title,
         description: document.getElementById('create-desc').value || undefined,
-        assignedTo: document.getElementById('create-assigned').value || undefined,
+        assignedTo,
         priority: document.getElementById('create-priority').value ? parseInt(document.getElementById('create-priority').value) : undefined,
         parentId: document.getElementById('create-parent').value ? parseInt(document.getElementById('create-parent').value) : undefined
       });
@@ -750,6 +786,12 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
       s = s.replace(/\\*\\*(.+?)\\*\\*/g, '<strong>$1</strong>');
       // Italic
       s = s.replace(/\\*(.+?)\\*/g, '<em>$1</em>');
+      // Success lines — highlight lines starting with ✅ or containing success verbs
+      s = s.replace(/((?:^|\\n)\\s*(?:\\u2705|✅)[^\\n]*)/g, '<span class="success-line">$1</span>');
+      s = s.replace(/((?:^|\\n)[^\\n]*(?:(?:Created|Updated|Deleted|Assigned|Moved|Resolved|Reassigned)[^\\n]*(?:successfully|#\\d+)[^\\n]*))/gi, function(m) {
+        if (m.includes('success-line')) return m;
+        return '<span class="success-line">' + m + '</span>';
+      });
       // Work item IDs — make them clickable tags
       s = s.replace(/#(\\d{4,})/g, '<span class="wi-tag" data-id="$1">#$1</span>');
       // Unordered lists
@@ -811,15 +853,34 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
           document.getElementById('create-title').value = '';
           document.getElementById('create-desc').value = '';
           document.getElementById('create-assigned').value = '';
+          document.getElementById('create-assigned').disabled = false;
+          document.getElementById('create-assign-copilot').checked = false;
           document.getElementById('create-priority').value = '';
           document.getElementById('create-parent').value = '';
           break;
         case 'workItemUpdated':
-          document.getElementById('edit-status')?.remove;
           showDetail(msg.item);
+          // Show success toast at top of detail view
+          const detailEl = document.querySelector('.detail-view');
+          if (detailEl) {
+            const toast = document.createElement('div');
+            toast.className = 'success-msg';
+            toast.textContent = '\\u2705 Work item #' + msg.item.id + ' updated successfully!';
+            detailEl.insertBefore(toast, detailEl.firstChild);
+            setTimeout(() => toast.remove(), 4000);
+          }
           break;
         case 'workItemDeleted':
           loadWorkItems();
+          // Brief flash message before list reloads
+          const listEl = document.getElementById('work-items-list');
+          if (listEl) {
+            const toast = document.createElement('div');
+            toast.className = 'success-msg';
+            toast.textContent = '\\u2705 Work item #' + msg.id + ' deleted.';
+            listEl.insertBefore(toast, listEl.firstChild);
+            setTimeout(() => toast.remove(), 3000);
+          }
           break;
         case 'iterationsLoaded':
           boardIterSel.innerHTML = '<option value="">Select sprint...</option>';
