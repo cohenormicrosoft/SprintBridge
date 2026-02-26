@@ -122,28 +122,39 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
     .loading { text-align: center; padding: 20px; opacity: 0.6; }
     .error-msg { color: var(--error); padding: 8px 10px; font-size: 12px; }
     .success-msg { color: #4ec94e; font-weight: 700; padding: 10px 12px; font-size: 13px; border-left: 3px solid #4ec94e; background: rgba(78, 201, 78, 0.08); border-radius: 3px; margin: 4px 0; }
-    .copilot-assign-label { display: flex; align-items: center; gap: 4px; margin-top: 4px; font-size: 12px; cursor: pointer; opacity: 0.85; }
-    .copilot-assign-label:hover { opacity: 1; }
-    .copilot-assign-label input[type="checkbox"] { margin: 0; cursor: pointer; }
-    .copilot-icon { font-size: 13px; }
-    .chat-bubble .success-line { color: #4ec94e; font-weight: 700; }
+    .copilot-assign-label { display: inline-flex; align-items: center; gap: 6px; margin-top: 6px; padding: 5px 12px; font-size: 12px; cursor: pointer; border: 1px solid var(--border); border-radius: 20px; transition: all 0.15s; background: transparent; user-select: none; }
+    .copilot-assign-label:hover { border-color: var(--btn-bg); background: rgba(128,128,128,0.06); }
+    .copilot-assign-label input[type="checkbox"] { display: none; }
+    .copilot-assign-label.active { border-color: var(--btn-bg); background: var(--btn-bg); color: var(--btn-fg); }
+    .copilot-icon { font-size: 14px; line-height: 1; }
 
     /* Sprint Board */
-    .board-columns { display: flex; gap: 6px; padding: 8px; height: 100%; overflow-x: auto; min-height: 0; }
-    .board-column { flex: 1; min-width: 140px; background: var(--input-bg); border-radius: 4px; display: flex; flex-direction: column; max-height: 100%; }
-    .board-column-header { padding: 6px 8px; font-weight: 600; font-size: 12px; text-align: center; border-bottom: 2px solid var(--btn-bg); flex-shrink: 0; }
-    .board-column-header .col-count { font-weight: normal; opacity: 0.6; }
-    .board-column-body { flex: 1; overflow-y: auto; padding: 4px; min-height: 60px; }
-    .board-card { background: var(--bg); border: 1px solid var(--border); border-left: 3px solid var(--btn-bg); border-radius: 3px; padding: 6px 8px; margin-bottom: 4px; cursor: grab; font-size: 12px; }
-    .board-card:active { cursor: grabbing; opacity: 0.7; }
+    .board-toolbar { padding: 10px 12px; border-bottom: 1px solid var(--border); display: flex; gap: 8px; flex-wrap: wrap; align-items: center; flex-shrink: 0; background: var(--input-bg); }
+    .board-toolbar .board-field { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 100px; }
+    .board-toolbar .board-field label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.6; font-weight: 600; }
+    .board-toolbar .board-field input,
+    .board-toolbar .board-field select { background: var(--bg); color: var(--input-fg); border: 1px solid var(--border); padding: 5px 8px; font-size: 12px; border-radius: 4px; }
+    .board-toolbar .board-field input:focus,
+    .board-toolbar .board-field select:focus { border-color: var(--btn-bg); outline: none; }
+    .board-load-btn { padding: 6px 16px; border-radius: 4px; font-size: 12px; font-weight: 600; letter-spacing: 0.3px; border: none; background: var(--btn-bg); color: var(--btn-fg); cursor: pointer; align-self: flex-end; transition: opacity 0.15s; }
+    .board-load-btn:hover { opacity: 0.85; }
+    .board-columns { display: flex; gap: 8px; padding: 10px; height: 100%; overflow-x: auto; min-height: 0; }
+    .board-column { flex: 1; min-width: 150px; background: var(--input-bg); border-radius: 6px; display: flex; flex-direction: column; max-height: 100%; border: 1px solid var(--border); }
+    .board-column-header { padding: 8px 10px; font-weight: 600; font-size: 12px; text-align: center; border-bottom: 1px solid var(--border); flex-shrink: 0; background: rgba(128,128,128,0.06); border-radius: 6px 6px 0 0; }
+    .board-column-header .col-count { font-weight: normal; opacity: 0.5; margin-left: 4px; }
+    .board-column-body { flex: 1; overflow-y: auto; padding: 6px; min-height: 60px; }
+    .board-card { background: var(--bg); border: 1px solid var(--border); border-left: 3px solid var(--btn-bg); border-radius: 5px; padding: 8px 10px; margin-bottom: 6px; cursor: grab; font-size: 12px; transition: box-shadow 0.15s, transform 0.1s; }
+    .board-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.15); transform: translateY(-1px); }
+    .board-card:active { cursor: grabbing; opacity: 0.7; transform: none; box-shadow: none; }
     .board-card.drag-over { border-top: 2px solid var(--btn-bg); }
-    .board-card-id { opacity: 0.5; font-size: 11px; cursor: pointer; }
+    .board-card-id { opacity: 0.5; font-size: 10px; cursor: pointer; font-family: var(--vscode-editor-font-family, monospace); }
     .board-card-id:hover { opacity: 1; text-decoration: underline; }
-    .board-card-title { margin-top: 2px; font-weight: 500; }
-    .board-card-meta { margin-top: 3px; opacity: 0.6; font-size: 11px; }
-    .board-card .type-badge { font-size: 10px; padding: 1px 4px; }
-    .copy-toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--btn-bg); color: var(--bg); padding: 4px 14px; border-radius: 4px; font-size: 12px; z-index: 999; opacity: 0; transition: opacity 0.2s; pointer-events: none; }
-    .board-column-body.drag-target { background: rgba(255,255,255,0.05); outline: 1px dashed var(--btn-bg); }
+    .board-card-title { margin-top: 4px; font-weight: 500; line-height: 1.3; }
+    .board-card-meta { margin-top: 4px; opacity: 0.55; font-size: 11px; display: flex; align-items: center; gap: 4px; }
+    .board-card-meta::before { content: '\\1F464'; font-size: 10px; }
+    .board-card .type-badge { font-size: 9px; padding: 1px 5px; border-radius: 3px; }
+    .copy-toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--btn-bg); color: var(--btn-fg); padding: 6px 16px; border-radius: 6px; font-size: 12px; z-index: 999; opacity: 0; transition: opacity 0.2s; pointer-events: none; font-weight: 500; }
+    .board-column-body.drag-target { background: rgba(255,255,255,0.05); outline: 2px dashed var(--btn-bg); outline-offset: -2px; border-radius: 4px; }
     /* Toggle switch */
     .toggle-wrap { display: flex; align-items: center; gap: 5px; font-size: 12px; white-space: nowrap; cursor: pointer; }
     .toggle-switch { position: relative; width: 32px; height: 18px; background: var(--border); border-radius: 9px; transition: background 0.2s; flex-shrink: 0; }
@@ -239,16 +250,22 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
 
   <!-- Board Panel -->
   <div class="panel" id="panel-board">
-    <div class="board-filters" style="padding:8px 10px;border-bottom:1px solid var(--border);display:flex;gap:6px;flex-wrap:wrap;align-items:center;flex-shrink:0;">
-      <input class="filter-input" id="board-team" placeholder="Team name (e.g. MyTeam)" style="flex:1;min-width:100px;" />
-      <select class="filter-select" id="board-iteration" style="flex:1;min-width:120px;">
-        <option value="">Enter team → load sprints</option>
-      </select>
-      <label class="toggle-wrap"><input type="checkbox" id="board-me-filter" /><span class="toggle-switch"></span>Me</label>
-      <button class="btn btn-primary" id="board-load" style="padding:4px 12px;">Load</button>
+    <div class="board-toolbar">
+      <div class="board-field">
+        <label>Team</label>
+        <input id="board-team" placeholder="e.g. MyTeam" />
+      </div>
+      <div class="board-field">
+        <label>Sprint</label>
+        <select id="board-iteration">
+          <option value="">Enter team → load sprints</option>
+        </select>
+      </div>
+      <label class="toggle-wrap" style="align-self:flex-end;"><input type="checkbox" id="board-me-filter" /><span class="toggle-switch"></span>My items</label>
+      <button class="board-load-btn" id="board-load">Load Board</button>
     </div>
     <div class="panel-content" id="board-container" style="padding:0;">
-      <div class="empty-state">Select a team and sprint, then click Load.</div>
+      <div class="empty-state">Select a team and sprint, then click <strong>Load Board</strong>.</div>
     </div>
   </div>
 
@@ -563,14 +580,17 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
 
       const editCopilotCb = document.getElementById('edit-assign-copilot');
       const editAssignedInput = document.getElementById('edit-assigned');
-      if (editCopilotCb.checked) { editAssignedInput.disabled = true; }
+      const editCopilotLabel = editCopilotCb.closest('.copilot-assign-label');
+      if (editCopilotCb.checked) { editAssignedInput.disabled = true; if (editCopilotLabel) editCopilotLabel.classList.add('active'); }
       editCopilotCb.addEventListener('change', () => {
         if (editCopilotCb.checked) {
           editAssignedInput.value = COPILOT_IDENTITY;
           editAssignedInput.disabled = true;
+          if (editCopilotLabel) editCopilotLabel.classList.add('active');
         } else {
           editAssignedInput.value = item.assignedTo || '';
           editAssignedInput.disabled = false;
+          if (editCopilotLabel) editCopilotLabel.classList.remove('active');
         }
       });
 
@@ -607,12 +627,15 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
     const assignedInput = document.getElementById('create-assigned');
 
     copilotCheckbox.addEventListener('change', () => {
+      const label = copilotCheckbox.closest('.copilot-assign-label');
       if (copilotCheckbox.checked) {
         assignedInput.value = COPILOT_IDENTITY;
         assignedInput.disabled = true;
+        if (label) label.classList.add('active');
       } else {
         assignedInput.value = '';
         assignedInput.disabled = false;
+        if (label) label.classList.remove('active');
       }
     });
 
@@ -786,12 +809,6 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
       s = s.replace(/\\*\\*(.+?)\\*\\*/g, '<strong>$1</strong>');
       // Italic
       s = s.replace(/\\*(.+?)\\*/g, '<em>$1</em>');
-      // Success lines — highlight lines starting with ✅ or containing success verbs
-      s = s.replace(/((?:^|\\n)\\s*(?:\\u2705|✅)[^\\n]*)/g, '<span class="success-line">$1</span>');
-      s = s.replace(/((?:^|\\n)[^\\n]*(?:(?:Created|Updated|Deleted|Assigned|Moved|Resolved|Reassigned)[^\\n]*(?:successfully|#\\d+)[^\\n]*))/gi, function(m) {
-        if (m.includes('success-line')) return m;
-        return '<span class="success-line">' + m + '</span>';
-      });
       // Work item IDs — make them clickable tags
       s = s.replace(/#(\\d{4,})/g, '<span class="wi-tag" data-id="$1">#$1</span>');
       // Unordered lists
@@ -855,6 +872,8 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
           document.getElementById('create-assigned').value = '';
           document.getElementById('create-assigned').disabled = false;
           document.getElementById('create-assign-copilot').checked = false;
+          var createCopilotLabel = document.getElementById('create-assign-copilot').closest('.copilot-assign-label');
+          if (createCopilotLabel) createCopilotLabel.classList.remove('active');
           document.getElementById('create-priority').value = '';
           document.getElementById('create-parent').value = '';
           break;
