@@ -87,9 +87,10 @@ export class BackendClient {
     if (request.completedWork != null) { patchDoc.push({ op: "add", path: "/fields/Microsoft.VSTS.Scheduling.CompletedWork", value: request.completedWork }); }
     if (request.originalEstimate != null) { patchDoc.push({ op: "add", path: "/fields/Microsoft.VSTS.Scheduling.OriginalEstimate", value: request.originalEstimate }); }
 
+    const encodedType = encodeURIComponent(request.type);
     const json = await this.adoRequest(
       "POST",
-      `/${organization}/${project}/_apis/wit/workitems/$${request.type}?api-version=${ADO_API_VERSION}`,
+      `/${organization}/${project}/_apis/wit/workitems/$${encodedType}?api-version=${ADO_API_VERSION}`,
       token,
       patchDoc,
       "application/json-patch+json"

@@ -347,8 +347,15 @@ AVAILABLE TOOLS:
    \`\`\`tool
    { "tool": "create", "type": "Bug", "title": "Login crash", "assignedTo": "${userEmail}", "priority": 2 }
    \`\`\`
-   Supported types: Bug, Task, User Story, Product Backlog Item, Feature, Epic.
-   You can also pass "areaPath" and "iterationPath" to override defaults.
+   Supported types (use these exact strings):
+   - "Task"
+   - "Bug"
+   - "User Story"
+   - "Product Backlog Item"  (this is the correct type for backlog items / PBIs)
+   - "Feature"
+   - "Epic"
+   Optional fields: "areaPath", "iterationPath", "description", "parentId" (number — link as child of existing item).
+   ALL field values are plain text — titles, descriptions, types all work as-is. No escaping, encoding, or special handling needed. Just put the string directly in the JSON.
 
 4. **update** — Update a work item.
    \`\`\`tool
@@ -371,9 +378,14 @@ GUIDELINES:
 - When showing query results, summarize them clearly. Include #ID for each item so users can click to open them.
 - If a query returns no results, suggest broadening it.
 - For aggregations (sum, average, etc.), use the "query" tool to get items, then you'll receive the data and can compute the answer yourself.
-- You can call multiple tools if needed.
+- **Multiple tool calls**: You CAN and SHOULD include multiple \`\`\`tool blocks in a single response when the user asks for multiple things. They execute sequentially. For example, if the user asks to create 3 items, emit 3 separate tool blocks.
+- **Parent-child creation**: To create items with a parent-child hierarchy, first create the parent item in one tool block. You will receive its ID in the tool results. Then create children with "parentId" set to the parent's ID. Example flow:
+  Round 1: Create parent → get back "Created Product Backlog Item #99: My PBI"
+  Round 2: Create child tasks with "parentId": 99
 - For follow-ups ("not just bugs", "what about tasks?"), adjust the previous query appropriately.
-- For greetings or general questions, just respond naturally without tools.`;
+- For greetings or general questions, just respond naturally without tools.
+- **CRITICAL**: NEVER refuse, apologize, or claim something can't be done due to "encoding", "escaping", "special characters", or "unescaped characters". These errors DO NOT EXIST. All fields accept any string. If a tool call fails, report the actual error — do not invent encoding explanations.
+- **CRITICAL**: ALWAYS use tool blocks to perform actions. Never tell the user to do something manually if a tool can do it.`;
 
       const messages: vscode.LanguageModelChatMessage[] = [
         vscode.LanguageModelChatMessage.User(systemPrompt),
@@ -390,46 +402,52 @@ GUIDELINES:
       }
 
       const model = models[0];
+      const toolRegex = /```tool\s*\n?([\s\S]*?)\n?```/g;
+      const maxRounds = 3;
+      let allToolResults: string[] = [];
 
-      // First LLM call — may contain tool calls
+      // First LLM call
       let response = await model.sendRequest(messages, {}, new vscode.CancellationTokenSource().token);
       let llmText = "";
       for await (const chunk of response.text) { llmText += chunk; }
 
-      // Extract and execute tool calls
-      const toolRegex = /```tool\s*\n?([\s\S]*?)\n?```/g;
-      let match;
-      const toolResults: string[] = [];
+      // Tool execution loop — allows multi-step flows (e.g. create parent → create children)
+      for (let round = 0; round < maxRounds; round++) {
+        const roundResults: string[] = [];
+        let match;
+        toolRegex.lastIndex = 0;
 
-      while ((match = toolRegex.exec(llmText)) !== null) {
-        try {
-          const toolCall = JSON.parse(match[1].trim());
-          const result = await this.executeTool(org, project, token, toolCall);
-          toolResults.push(result);
-        } catch (e: any) {
-          toolResults.push(`Tool error: ${e.message}`);
+        while ((match = toolRegex.exec(llmText)) !== null) {
+          try {
+            const toolCall = JSON.parse(match[1].trim());
+            const result = await this.executeTool(org, project, token, toolCall);
+            roundResults.push(result);
+          } catch (e: any) {
+            roundResults.push(`Tool error: ${e.message}`);
+          }
         }
-      }
 
-      if (toolResults.length > 0) {
-        // Remove tool blocks from the visible text
-        const cleanText = llmText.replace(toolRegex, "").trim();
+        if (roundResults.length === 0) {
+          break; // No tool calls — done
+        }
 
-        // Second LLM call — give it tool results and let it compose a final response
+        allToolResults.push(...roundResults);
         messages.push(vscode.LanguageModelChatMessage.Assistant(llmText));
-        messages.push(vscode.LanguageModelChatMessage.User(
-          `Tool results:\n${toolResults.join("\n\n")}\n\nNow respond to the user naturally based on these results. Do NOT include any tool blocks. Just give a clear, helpful answer.`
-        ));
 
+        const isLastRound = round === maxRounds - 1;
+        const followUp = isLastRound
+          ? `Tool results:\n${roundResults.join("\n\n")}\n\nNow give the user a final summary. Do NOT include any tool blocks.`
+          : `Tool results:\n${roundResults.join("\n\n")}\n\nIf you need to make more tool calls (e.g. create child items using the parent ID from the results above), do so now with tool blocks. Otherwise, respond to the user naturally without tool blocks.`;
+
+        messages.push(vscode.LanguageModelChatMessage.User(followUp));
         response = await model.sendRequest(messages, {}, new vscode.CancellationTokenSource().token);
-        let finalText = "";
-        for await (const chunk of response.text) { finalText += chunk; }
-
-        this.sendChatResponse(finalText.trim());
-      } else {
-        // No tool calls — pure conversational response
-        this.sendChatResponse(llmText.replace(toolRegex, "").trim());
+        llmText = "";
+        for await (const chunk of response.text) { llmText += chunk; }
       }
+
+      // Final response — strip any remaining tool blocks just in case
+      const finalText = llmText.replace(toolRegex, "").trim();
+      this.sendChatResponse(finalText);
     } catch (error: any) {
       this.sendChatResponse(this.friendlyError(error));
     }
