@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { BackendClient, CreateWorkItemRequest, UpdateWorkItemRequest, WorkItem } from "./backendClient";
 import { AuthProvider } from "./auth";
+import { resolveCopilotAssignee, COPILOT_IDENTITY } from "./constants";
 
 interface ParsedIntent {
   action: "create" | "get" | "update" | "delete" | "query" | "help" | "unknown";
@@ -114,6 +115,9 @@ async function parseUserIntent(
     }
 
     const model = models[0];
+    const config = vscode.workspace.getConfiguration("sprintbridge");
+    const defaultArea = config.get<string>("areaPath") || "";
+    const defaultIteration = config.get<string>("defaultIterationPath") || "";
     const systemPrompt = `You are a JSON parser for Azure DevOps work item operations. 
 Given a user message, extract the intent as JSON with these fields:
 - action: "create" | "get" | "update" | "delete" | "query" | "help"
@@ -121,10 +125,12 @@ Given a user message, extract the intent as JSON with these fields:
 - workItemType: string (Bug, Task, User Story, Feature, Epic)
 - title: string (for create/update)
 - description: string (for create/update)  
-- assignedTo: string (for create/update)
+- assignedTo: string (for create/update). IMPORTANT: If the user says "copilot", "github copilot", or "assign to copilot", set assignedTo to exactly "${COPILOT_IDENTITY}"
 - state: string (New, Active, Resolved, Closed)
 - priority: number 1-4 (for create/update)
 - queryText: string (WIQL WHERE clause for queries, e.g., "[System.AssignedTo] = @Me")
+
+User defaults — area path: "${defaultArea}", iteration: "${defaultIteration}". These are auto-applied, no need to include unless user explicitly overrides.
 
 Respond with ONLY valid JSON, no markdown formatting.
 If the user is asking for help or you can't determine the action, use action "help" or "unknown".`;
@@ -182,10 +188,12 @@ function fallbackParseIntent(prompt: string): ParsedIntent {
   if (lower.match(/(?:create|add|new|make)\s/)) {
     const typeMatch = lower.match(/(?:bug|task|user\s*story|feature|epic)/i);
     const titleMatch = prompt.match(/(?:titled?|called|named)\s+["']?(.+?)["']?\s*$/i);
+    const copilotAssign = lower.match(/assign\s+(?:to\s+)?(?:github\s*)?copilot/i) || lower.includes("for copilot");
     return {
       action: "create",
       workItemType: typeMatch ? typeMatch[0].trim() : "Task",
       title: titleMatch ? titleMatch[1] : prompt.replace(/^.*?(?:create|add|new|make)\s+(?:a\s+)?(?:bug|task|user\s*story|feature|epic)?\s*/i, "").trim(),
+      assignedTo: copilotAssign ? COPILOT_IDENTITY : undefined,
     };
   }
 
@@ -205,13 +213,16 @@ async function handleCreate(
   token: string,
   intent: ParsedIntent
 ): Promise<void> {
+  const config = vscode.workspace.getConfiguration("sprintbridge");
   const request: CreateWorkItemRequest = {
     type: intent.workItemType || "Task",
     title: intent.title || "New Work Item",
     description: intent.description,
-    assignedTo: intent.assignedTo,
+    assignedTo: intent.assignedTo ? resolveCopilotAssignee(intent.assignedTo) : undefined,
     state: intent.state,
     priority: intent.priority,
+    areaPath: config.get<string>("areaPath") || undefined,
+    iterationPath: config.get<string>("defaultIterationPath") || undefined,
   };
 
   stream.markdown(`🔄 Creating **${request.type}**: "${request.title}"...\n\n`);
@@ -257,7 +268,7 @@ async function handleUpdate(
   const request: UpdateWorkItemRequest = {};
   if (intent.title) { request.title = intent.title; }
   if (intent.description) { request.description = intent.description; }
-  if (intent.assignedTo) { request.assignedTo = intent.assignedTo; }
+  if (intent.assignedTo) { request.assignedTo = resolveCopilotAssignee(intent.assignedTo); }
   if (intent.state) { request.state = intent.state; }
   if (intent.priority) { request.priority = intent.priority; }
 
@@ -346,6 +357,8 @@ function getHelpText(): string {
 |-------------|-------------|
 | \`Create a bug titled "Login page crashes"\` | Creates a new Bug work item |
 | \`Create a task for updating the README\` | Creates a new Task |
+| \`Create a task and assign to copilot\` | Creates a Task assigned to GitHub Copilot |
+| \`Assign 12345 to github copilot\` | Assigns item to Copilot to start working on it |
 | \`Show work item 12345\` | Displays details of item #12345 |
 | \`Update 12345 state to Active\` | Changes state of item #12345 |
 | \`Delete work item 12345\` | Deletes item #12345 |
@@ -354,6 +367,7 @@ function getHelpText(): string {
 
 ## Setup
 1. Set your ADO **Organization** and **Project** in VS Code settings
-2. Sign in with your Microsoft account when prompted
+2. Optionally set **Area Path**, **Team**, and **Default Sprint** — these are saved and auto-applied
+3. Sign in with your Microsoft account when prompted
 `;
 }

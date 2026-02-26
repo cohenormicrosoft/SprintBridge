@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { BackendClient, CreateWorkItemRequest, UpdateWorkItemRequest } from "./backendClient";
 import { AuthProvider } from "./auth";
 import { getWebviewHtml } from "./webviewHtml";
+import { resolveCopilotAssignee, COPILOT_IDENTITY } from "./constants";
 
 export class SidebarProvider implements vscode.WebviewViewProvider {
   public static readonly viewId = "sprintbridge.sidebarView";
@@ -46,6 +47,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         project: config.get<string>("project") || "",
         areaPath: config.get<string>("areaPath") || "",
         userEmail: config.get<string>("userEmail") || "",
+        team: config.get<string>("team") || "",
+        defaultIterationPath: config.get<string>("defaultIterationPath") || "",
       });
       return;
     }
@@ -60,12 +63,20 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       if (msg.userEmail !== undefined) {
         await config.update("userEmail", msg.userEmail, vscode.ConfigurationTarget.Global);
       }
+      if (msg.team !== undefined) {
+        await config.update("team", msg.team, vscode.ConfigurationTarget.Global);
+      }
+      if (msg.defaultIterationPath !== undefined) {
+        await config.update("defaultIterationPath", msg.defaultIterationPath, vscode.ConfigurationTarget.Global);
+      }
       this.postMessage({
         command: "configSaved",
         organization: msg.organization,
         project: msg.project,
         areaPath: msg.areaPath || "",
         userEmail: msg.userEmail || "",
+        team: msg.team || "",
+        defaultIterationPath: msg.defaultIterationPath || "",
       });
       return;
     }
@@ -191,12 +202,15 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   }
 
   private async handleCreate(org: string, project: string, token: string, msg: any): Promise<void> {
+    const config = vscode.workspace.getConfiguration("sprintbridge");
     const request: CreateWorkItemRequest = {
       type: msg.type || "Task",
       title: msg.title,
       description: msg.description,
-      assignedTo: msg.assignedTo,
+      assignedTo: msg.assignedTo ? resolveCopilotAssignee(msg.assignedTo) : undefined,
       priority: msg.priority,
+      areaPath: msg.areaPath || config.get<string>("areaPath") || undefined,
+      iterationPath: msg.iterationPath || config.get<string>("defaultIterationPath") || undefined,
     };
     const item = await this.backendClient.createWorkItem(org, project, request, token);
     if (msg.parentId) {
@@ -213,7 +227,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const request: UpdateWorkItemRequest = {};
     if (updates.title) { request.title = updates.title; }
     if (updates.state) { request.state = updates.state; }
-    if (updates.assignedTo) { request.assignedTo = updates.assignedTo; }
+    if (updates.assignedTo) { request.assignedTo = resolveCopilotAssignee(updates.assignedTo); }
     if (updates.priority) { request.priority = updates.priority; }
     if (updates.description) { request.description = updates.description; }
     if (updates.remainingWork !== undefined) { request.remainingWork = updates.remainingWork; }
@@ -298,10 +312,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       const config = vscode.workspace.getConfiguration("sprintbridge");
       const userEmail = config.get<string>("userEmail") || await this.authProvider.getAccountName() || "unknown";
       const areaPath = config.get<string>("areaPath") || "";
+      const team = config.get<string>("team") || "";
+      const defaultIteration = config.get<string>("defaultIterationPath") || "";
 
       const systemPrompt = `You are SprintBridge AI — a helpful assistant for managing Azure DevOps work items.
 
-USER: ${userEmail} | Org: ${org} | Project: ${project} | Area: ${areaPath || "not set"}
+USER: ${userEmail} | Org: ${org} | Project: ${project} | Area: ${areaPath || "not set"} | Team: ${team || "not set"} | Default Sprint: ${defaultIteration || "not set"}
 
 You have TOOLS to interact with Azure DevOps. To use a tool, include a JSON block in your response like:
 \`\`\`tool
@@ -322,11 +338,12 @@ AVAILABLE TOOLS:
    { "tool": "get", "id": 12345 }
    \`\`\`
 
-3. **create** — Create a work item.
+3. **create** — Create a work item. Area path and iteration path are auto-filled from user defaults if not specified.
    \`\`\`tool
    { "tool": "create", "type": "Bug", "title": "Login crash", "assignedTo": "${userEmail}", "priority": 2 }
    \`\`\`
    Supported types: Bug, Task, User Story, Product Backlog Item, Feature, Epic.
+   You can also pass "areaPath" and "iterationPath" to override defaults.
 
 4. **update** — Update a work item.
    \`\`\`tool
@@ -338,12 +355,15 @@ AVAILABLE TOOLS:
    { "tool": "delete", "id": 12345 }
    \`\`\`
 
+SPECIAL ASSIGNEES:
+- When the user says "me"/"my"/"myself" → use @Me in queries and "${userEmail}" for create/update.
+- When the user says "copilot"/"github copilot"/"assign to copilot" → use exactly "${COPILOT_IDENTITY}" as the assignedTo value. This assigns the work item to the GitHub Copilot agent so it can start implementing.
+
 GUIDELINES:
 - Be conversational and helpful. Respond naturally, not just with raw data.
 - When showing query results, summarize them clearly.
 - If a query returns no results, suggest broadening it.
 - For aggregations (sum, average, etc.), use the "query" tool to get items, then you'll receive the data and can compute the answer yourself.
-- When the user says "me"/"my", use @Me in queries and "${userEmail}" for create/update.
 - You can call multiple tools if needed.
 - For follow-ups ("not just bugs", "what about tasks?"), adjust the previous query appropriately.
 - For greetings or general questions, just respond naturally without tools.`;
@@ -427,9 +447,12 @@ GUIDELINES:
         return `Work item #${item.id}:\nType: ${item.type}\nTitle: ${item.title}\nState: ${item.state || "N/A"}\nAssigned: ${item.assignedTo || "Unassigned"}\nPriority: ${item.priority || "N/A"}\nArea: ${item.areaPath || "N/A"}\nIteration: ${item.iterationPath || "N/A"}${item.remainingWork != null ? `\nRemaining: ${item.remainingWork}h` : ""}${item.completedWork != null ? `\nCompleted: ${item.completedWork}h` : ""}${item.originalEstimate != null ? `\nEstimate: ${item.originalEstimate}h` : ""}${item.description ? `\nDescription: ${item.description.replace(/<[^>]*>/g, "").substring(0, 200)}` : ""}`;
       }
       case "create": {
+        const cfg = vscode.workspace.getConfiguration("sprintbridge");
         let assignTo = tool.assignedTo;
         if (assignTo && /^(@?me|myself)$/i.test(assignTo.trim())) {
           assignTo = await this.authProvider.getAccountName() || undefined;
+        } else if (assignTo) {
+          assignTo = resolveCopilotAssignee(assignTo);
         }
         const item = await this.backendClient.createWorkItem(org, project, {
           type: tool.type || "Task",
@@ -437,6 +460,8 @@ GUIDELINES:
           description: tool.description,
           assignedTo: assignTo,
           priority: tool.priority,
+          areaPath: tool.areaPath || cfg.get<string>("areaPath") || undefined,
+          iterationPath: tool.iterationPath || cfg.get<string>("defaultIterationPath") || undefined,
           remainingWork: tool.remainingWork,
           completedWork: tool.completedWork,
           originalEstimate: tool.originalEstimate,
@@ -455,10 +480,12 @@ GUIDELINES:
           if (/^(@?me|myself)$/i.test(tool.assignedTo.trim())) {
             req.assignedTo = await this.authProvider.getAccountName() || tool.assignedTo;
           } else {
-            req.assignedTo = tool.assignedTo;
+            req.assignedTo = resolveCopilotAssignee(tool.assignedTo);
           }
         }
         if (tool.priority) { req.priority = tool.priority; }
+        if (tool.areaPath) { req.areaPath = tool.areaPath; }
+        if (tool.iterationPath) { req.iterationPath = tool.iterationPath; }
         if (tool.remainingWork !== undefined) { req.remainingWork = tool.remainingWork; }
         if (tool.completedWork !== undefined) { req.completedWork = tool.completedWork; }
         if (tool.originalEstimate !== undefined) { req.originalEstimate = tool.originalEstimate; }

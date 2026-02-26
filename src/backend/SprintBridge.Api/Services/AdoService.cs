@@ -44,33 +44,13 @@ public class AdoService : IAdoService
         if (!response.IsSuccessStatusCode) return null;
 
         var json = await response.Content.ReadFromJsonAsync<JsonElement>();
-        return MapWorkItem(json);
+        return WorkItemMapper.Map(json);
     }
 
     public async Task<WorkItemDto> CreateWorkItemAsync(string organization, string project, CreateWorkItemRequest request, string token)
     {
         SetAuth(token);
-        var patchDoc = new List<AdoPatchOperation>();
-
-        patchDoc.Add(new("add", "/fields/System.Title", request.Title));
-        if (request.Description is not null)
-            patchDoc.Add(new("add", "/fields/System.Description", request.Description));
-        if (request.AssignedTo is not null)
-            patchDoc.Add(new("add", "/fields/System.AssignedTo", request.AssignedTo));
-        if (request.State is not null)
-            patchDoc.Add(new("add", "/fields/System.State", request.State));
-        if (request.AreaPath is not null)
-            patchDoc.Add(new("add", "/fields/System.AreaPath", request.AreaPath));
-        if (request.IterationPath is not null)
-            patchDoc.Add(new("add", "/fields/System.IterationPath", request.IterationPath));
-        if (request.Priority is not null)
-            patchDoc.Add(new("add", "/fields/Microsoft.VSTS.Common.Priority", request.Priority));
-        if (request.RemainingWork is not null)
-            patchDoc.Add(new("add", "/fields/Microsoft.VSTS.Scheduling.RemainingWork", request.RemainingWork));
-        if (request.CompletedWork is not null)
-            patchDoc.Add(new("add", "/fields/Microsoft.VSTS.Scheduling.CompletedWork", request.CompletedWork));
-        if (request.OriginalEstimate is not null)
-            patchDoc.Add(new("add", "/fields/Microsoft.VSTS.Scheduling.OriginalEstimate", request.OriginalEstimate));
+        var patchDoc = PatchDocumentBuilder.Build(request);
 
         var url = $"{organization}/{project}/_apis/wit/workitems/${request.Type}?api-version={AdoApiVersion}";
         var content = new StringContent(
@@ -82,34 +62,13 @@ public class AdoService : IAdoService
         response.EnsureSuccessStatusCode();
 
         var json = await response.Content.ReadFromJsonAsync<JsonElement>();
-        return MapWorkItem(json);
+        return WorkItemMapper.Map(json);
     }
 
     public async Task<WorkItemDto?> UpdateWorkItemAsync(string organization, string project, int id, UpdateWorkItemRequest request, string token)
     {
         SetAuth(token);
-        var patchDoc = new List<AdoPatchOperation>();
-
-        if (request.Title is not null)
-            patchDoc.Add(new("add", "/fields/System.Title", request.Title));
-        if (request.Description is not null)
-            patchDoc.Add(new("add", "/fields/System.Description", request.Description));
-        if (request.AssignedTo is not null)
-            patchDoc.Add(new("add", "/fields/System.AssignedTo", request.AssignedTo));
-        if (request.State is not null)
-            patchDoc.Add(new("add", "/fields/System.State", request.State));
-        if (request.AreaPath is not null)
-            patchDoc.Add(new("add", "/fields/System.AreaPath", request.AreaPath));
-        if (request.IterationPath is not null)
-            patchDoc.Add(new("add", "/fields/System.IterationPath", request.IterationPath));
-        if (request.Priority is not null)
-            patchDoc.Add(new("add", "/fields/Microsoft.VSTS.Common.Priority", request.Priority));
-        if (request.RemainingWork is not null)
-            patchDoc.Add(new("add", "/fields/Microsoft.VSTS.Scheduling.RemainingWork", request.RemainingWork));
-        if (request.CompletedWork is not null)
-            patchDoc.Add(new("add", "/fields/Microsoft.VSTS.Scheduling.CompletedWork", request.CompletedWork));
-        if (request.OriginalEstimate is not null)
-            patchDoc.Add(new("add", "/fields/Microsoft.VSTS.Scheduling.OriginalEstimate", request.OriginalEstimate));
+        var patchDoc = PatchDocumentBuilder.Build(request);
 
         if (patchDoc.Count == 0) return await GetWorkItemAsync(organization, project, id, token);
 
@@ -128,7 +87,7 @@ public class AdoService : IAdoService
         }
 
         var json = await response.Content.ReadFromJsonAsync<JsonElement>();
-        return MapWorkItem(json);
+        return WorkItemMapper.Map(json);
     }
 
     public async Task<bool> DeleteWorkItemAsync(string organization, string project, int id, string token)
@@ -169,7 +128,7 @@ public class AdoService : IAdoService
                 {
                     foreach (var item in values.EnumerateArray())
                     {
-                        workItems.Add(MapWorkItem(item));
+                        workItems.Add(WorkItemMapper.Map(item));
                     }
                 }
             }
@@ -177,79 +136,6 @@ public class AdoService : IAdoService
 
         return workItems;
     }
-
-    private static WorkItemDto MapWorkItem(JsonElement json)
-    {
-        var fields = json.GetProperty("fields");
-        return new WorkItemDto
-        {
-            Id = json.GetProperty("id").GetInt32(),
-            Type = GetFieldString(fields, "System.WorkItemType"),
-            Title = GetFieldString(fields, "System.Title"),
-            Description = GetFieldStringOrNull(fields, "System.Description"),
-            AssignedTo = GetAssignedTo(fields),
-            State = GetFieldStringOrNull(fields, "System.State"),
-            AreaPath = GetFieldStringOrNull(fields, "System.AreaPath"),
-            IterationPath = GetFieldStringOrNull(fields, "System.IterationPath"),
-            Priority = GetFieldIntOrNull(fields, "Microsoft.VSTS.Common.Priority"),
-            Url = json.TryGetProperty("url", out var url) ? url.GetString() : null,
-            CreatedDate = GetFieldDateOrNull(fields, "System.CreatedDate"),
-            ChangedDate = GetFieldDateOrNull(fields, "System.ChangedDate"),
-            ParentId = GetParentId(json),
-            RemainingWork = GetFieldDoubleOrNull(fields, "Microsoft.VSTS.Scheduling.RemainingWork"),
-            CompletedWork = GetFieldDoubleOrNull(fields, "Microsoft.VSTS.Scheduling.CompletedWork"),
-            OriginalEstimate = GetFieldDoubleOrNull(fields, "Microsoft.VSTS.Scheduling.OriginalEstimate"),
-        };
-    }
-
-    private static int? GetParentId(JsonElement json)
-    {
-        if (!json.TryGetProperty("relations", out var relations) || relations.ValueKind != JsonValueKind.Array)
-            return null;
-
-        foreach (var rel in relations.EnumerateArray())
-        {
-            if (rel.TryGetProperty("rel", out var relType) && relType.GetString() == "System.LinkTypes.Hierarchy-Reverse"
-                && rel.TryGetProperty("url", out var relUrl))
-            {
-                var urlStr = relUrl.GetString();
-                if (urlStr is not null)
-                {
-                    var lastSlash = urlStr.LastIndexOf('/');
-                    if (lastSlash >= 0 && int.TryParse(urlStr[(lastSlash + 1)..], out var parentId))
-                        return parentId;
-                }
-            }
-        }
-        return null;
-    }
-
-    private static string GetFieldString(JsonElement fields, string fieldName) =>
-        fields.TryGetProperty(fieldName, out var val) ? val.GetString() ?? string.Empty : string.Empty;
-
-    private static string? GetFieldStringOrNull(JsonElement fields, string fieldName) =>
-        fields.TryGetProperty(fieldName, out var val) ? val.GetString() : null;
-
-    private static int? GetFieldIntOrNull(JsonElement fields, string fieldName) =>
-        fields.TryGetProperty(fieldName, out var val) && val.ValueKind == JsonValueKind.Number ? val.GetInt32() : null;
-
-    private static double? GetFieldDoubleOrNull(JsonElement fields, string fieldName) =>
-        fields.TryGetProperty(fieldName, out var val) && val.ValueKind == JsonValueKind.Number ? val.GetDouble() : null;
-
-    private static DateTime? GetFieldDateOrNull(JsonElement fields, string fieldName) =>
-        fields.TryGetProperty(fieldName, out var val) && val.ValueKind == JsonValueKind.String
-            ? DateTime.TryParse(val.GetString(), out var dt) ? dt : null
-            : null;
-
-    private static string? GetAssignedTo(JsonElement fields)
-    {
-        if (!fields.TryGetProperty("System.AssignedTo", out var assigned)) return null;
-        if (assigned.ValueKind == JsonValueKind.Object && assigned.TryGetProperty("displayName", out var name))
-            return name.GetString();
-        if (assigned.ValueKind == JsonValueKind.String)
-            return assigned.GetString();
-        return null;
-    }
 }
 
-internal record AdoPatchOperation(string op, string path, object? value);
+public record AdoPatchOperation(string op, string path, object? value);

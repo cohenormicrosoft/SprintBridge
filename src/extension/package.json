@@ -86,6 +86,16 @@
           "type": "string",
           "default": "",
           "description": "Your full email for ADO (e.g., 'user@company.com'). Used by AI chat for 'assigned to me'."
+        },
+        "sprintbridge.team": {
+          "type": "string",
+          "default": "",
+          "description": "Default Azure DevOps team name. Used for board views and iteration queries."
+        },
+        "sprintbridge.defaultIterationPath": {
+          "type": "string",
+          "default": "",
+          "description": "Default iteration/sprint path for new work items (e.g., 'MyProject\\\\Sprint 5')."
         }
       }
     }
