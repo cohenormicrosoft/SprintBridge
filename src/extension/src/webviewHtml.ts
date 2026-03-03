@@ -141,14 +141,14 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
     .mini-search-item strong { font-weight: 700; }
     .mini-search-loading { padding: 6px 10px; font-size: 12px; opacity: 0.5; cursor: default; }
 
-    /* Feedback FAB */
-    .feedback-fab { position: fixed; bottom: 12px; right: 12px; z-index: 100; background: var(--btn-bg); color: var(--btn-fg); border: none; border-radius: 50%; width: 32px; height: 32px; font-size: 15px; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; transition: transform 0.15s, box-shadow 0.15s; }
-    .feedback-fab:hover { transform: scale(1.1); box-shadow: 0 4px 14px rgba(0,0,0,0.4); }
-    .feedback-fab:active { transform: scale(0.95); }
+    /* Feedback link */
+    .feedback-link { position: fixed; bottom: 6px; right: 10px; z-index: 100; font-size: 10px; opacity: 0.5; color: var(--fg); cursor: pointer; background: none; border: none; font-family: inherit; }
+    .feedback-link:hover { opacity: 0.9; text-decoration: underline; }
 
     /* Sprint Board */
-    .board-toolbar { padding: 10px 12px; border-bottom: 1px solid var(--border); display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; flex-shrink: 0; background: var(--input-bg); }
-    .board-toolbar .board-field { display: flex; flex-direction: column; gap: 2px; flex: 1 1 0; min-width: 80px; }
+    .board-toolbar { padding: 10px 12px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; background: var(--input-bg); }
+    .board-toolbar .board-row { display: flex; gap: 8px; align-items: flex-end; }
+    .board-toolbar .board-field { display: flex; flex-direction: column; gap: 2px; flex: 1 1 0; min-width: 0; }
     .board-toolbar .board-field label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.6; font-weight: 600; }
     .board-toolbar .board-field input,
     .board-toolbar .board-field select { background: var(--bg); color: var(--input-fg); border: 1px solid var(--border); padding: 5px 8px; font-size: 12px; border-radius: 4px; }
@@ -269,21 +269,25 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
   <!-- Board Panel -->
   <div class="panel" id="panel-board">
     <div class="board-toolbar">
-      <div class="board-field">
-        <label>Team</label>
-        <div class="mini-search-wrap">
-          <input id="board-team" placeholder="Search teams..." autocomplete="off" />
-          <div class="mini-search-suggestions" id="board-team-suggestions"></div>
+      <div class="board-row">
+        <div class="board-field">
+          <label>Team</label>
+          <div class="mini-search-wrap">
+            <input id="board-team" placeholder="Search teams..." autocomplete="off" />
+            <div class="mini-search-suggestions" id="board-team-suggestions"></div>
+          </div>
+        </div>
+        <div class="board-field">
+          <label>Sprint</label>
+          <select id="board-iteration">
+            <option value="">Select team first</option>
+          </select>
         </div>
       </div>
-      <div class="board-field">
-        <label>Sprint</label>
-        <select id="board-iteration">
-          <option value="">Select team first</option>
-        </select>
+      <div class="board-row">
+        <label class="toggle-wrap"><input type="checkbox" id="board-me-filter" /><span class="toggle-switch"></span>My items</label>
+        <button class="board-load-btn" id="board-load">Load Board</button>
       </div>
-      <label class="toggle-wrap" style="align-self:flex-end;"><input type="checkbox" id="board-me-filter" /><span class="toggle-switch"></span>My items</label>
-      <button class="board-load-btn" id="board-load">Load Board</button>
     </div>
     <div class="panel-content" id="board-container" style="padding:0;">
       <div class="empty-state">Select a team and sprint, then click <strong>Load Board</strong>.</div>
@@ -391,7 +395,7 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
 
   </div><!-- /main-app -->
   <div class="copy-toast" id="copy-toast">Copied!</div>
-  <button class="feedback-fab" id="feedback-btn" title="Report Bug / Give Feedback">🐛</button>
+  <button class="feedback-link" id="feedback-btn" title="Send feedback or report a bug">Feedback</button>
 
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
