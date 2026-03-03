@@ -8,6 +8,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   public static readonly viewId = "sprintbridge.sidebarView";
   private view?: vscode.WebviewView;
   private chatHistory: Array<{ role: "user" | "ai"; text: string }> = [];
+  private repoCache: { id: string; name: string }[] | null = null;
+  private teamCache: { id: string; name: string }[] | null = null;
+  private projectIdCache: string | null = null;
+  private cacheWarmed = false;
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -50,6 +54,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         team: config.get<string>("team") || "",
         defaultIterationPath: config.get<string>("defaultIterationPath") || "",
       });
+      // Silently warm caches in the background so searches are instant
+      const org = config.get<string>("organization");
+      const proj = config.get<string>("project");
+      if (org && proj) {
+        this.authProvider.getToken().then(t => this.warmCaches(org, proj, t)).catch(() => {});
+      }
       return;
     }
 
@@ -78,6 +88,14 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         team: msg.team || "",
         defaultIterationPath: msg.defaultIterationPath || "",
       });
+      // Reset caches when org/project change so they re-fetch
+      this.repoCache = null;
+      this.teamCache = null;
+      this.projectIdCache = null;
+      this.cacheWarmed = false;
+      if (msg.organization && msg.project) {
+        this.authProvider.getToken().then(t => this.warmCaches(msg.organization, msg.project, t)).catch(() => {});
+      }
       return;
     }
 
@@ -121,6 +139,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       return;
     }
 
+    // Pre-fetch repos, teams, projectId in background so searches are instant
+    this.warmCaches(org, project, token);
+
     try {
       switch (msg.command) {
         case "queryWorkItems":
@@ -133,7 +154,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           await this.handleCreate(org, project, token, msg);
           break;
         case "updateWorkItem":
-          await this.handleUpdate(org, project, token, msg.id, msg.updates, msg.repoUrl, msg.repoBranch);
+          await this.handleUpdate(org, project, token, msg.id, msg.updates, msg.repoName, msg.repoBranch);
           break;
         case "deleteWorkItem":
           await this.handleDelete(org, project, token, msg.id);
@@ -141,10 +162,35 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         case "chatMessage":
           await this.handleChat(org, project, token, msg.text);
           break;
-        case "getTeams":
-          const teams = await this.backendClient.getTeams(org, project, token);
+        case "getTeams": {
+          const teams = await this.getTeamsCached(org, project, token);
           this.postMessage({ command: "teamsLoaded", teams });
           break;
+        }
+        case "searchTeams": {
+          const allTeams = await this.getTeamsCached(org, project, token);
+          const tq = (msg.query || "").toLowerCase().trim();
+          let teamMatched = allTeams;
+          if (tq) {
+            const starts = allTeams.filter(t => t.name.toLowerCase().startsWith(tq));
+            const contains = allTeams.filter(t => !t.name.toLowerCase().startsWith(tq) && t.name.toLowerCase().includes(tq));
+            teamMatched = [...starts, ...contains];
+          }
+          this.postMessage({ command: "teamSearchResults", teams: teamMatched.slice(0, 30), query: msg.query });
+          break;
+        }
+        case "searchRepos": {
+          const repos = await this.getReposCached(org, project, token);
+          const rq = (msg.query || "").toLowerCase().trim();
+          let repoMatched = repos;
+          if (rq) {
+            const starts = repos.filter(r => r.name.toLowerCase().startsWith(rq));
+            const contains = repos.filter(r => !r.name.toLowerCase().startsWith(rq) && r.name.toLowerCase().includes(rq));
+            repoMatched = [...starts, ...contains];
+          }
+          this.postMessage({ command: "repoSearchResults", repos: repoMatched.slice(0, 30), query: msg.query });
+          break;
+        }
         case "getIterations":
           const iterations = await this.backendClient.getIterations(org, project, msg.team, token);
           this.postMessage({ command: "iterationsLoaded", iterations });
@@ -216,20 +262,19 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       priority: msg.priority,
       areaPath: msg.areaPath || config.get<string>("areaPath") || undefined,
       iterationPath: msg.iterationPath || config.get<string>("defaultIterationPath") || undefined,
+      tags: msg.tags || undefined,
     };
     const item = await this.backendClient.createWorkItem(org, project, request, token);
     if (msg.parentId) {
       await this.backendClient.addParentLink(org, project, item.id, msg.parentId, token);
     }
-    if (msg.repoUrl) {
-      const comment = msg.repoBranch ? `GitHub Repository (branch: ${msg.repoBranch})` : "GitHub Repository";
-      const url = msg.repoBranch ? `${msg.repoUrl}/tree/${msg.repoBranch}` : msg.repoUrl;
-      await this.backendClient.addHyperlink(org, project, item.id, url, comment, token);
+    if (msg.repoName && msg.repoBranch) {
+      await this.linkBranch(org, project, token, item.id, msg.repoName, msg.repoBranch);
     }
     this.postMessage({ command: "workItemCreated", item });
   }
 
-  private async handleUpdate(org: string, project: string, token: string, id: number, updates: any, repoUrl?: string, repoBranch?: string): Promise<void> {
+  private async handleUpdate(org: string, project: string, token: string, id: number, updates: any, repoName?: string, repoBranch?: string): Promise<void> {
     if (!id) {
       this.postMessage({ command: "error", message: `Update failed: Invalid work item ID (${id})`, context: "edit" });
       return;
@@ -243,13 +288,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     if (updates.remainingWork !== undefined) { request.remainingWork = updates.remainingWork; }
     if (updates.completedWork !== undefined) { request.completedWork = updates.completedWork; }
     if (updates.originalEstimate !== undefined) { request.originalEstimate = updates.originalEstimate; }
+    if (updates.tags != null) { request.tags = updates.tags; }
 
     try {
       const item = await this.backendClient.updateWorkItem(org, project, id, request, token);
-      if (repoUrl) {
-        const comment = repoBranch ? `GitHub Repository (branch: ${repoBranch})` : "GitHub Repository";
-        const url = repoBranch ? `${repoUrl}/tree/${repoBranch}` : repoUrl;
-        await this.backendClient.addHyperlink(org, project, id, url, comment, token);
+      if (repoName && repoBranch) {
+        await this.linkBranch(org, project, token, id, repoName, repoBranch);
       }
       this.postMessage({ command: "workItemUpdated", item });
       vscode.window.showInformationMessage(`Work item #${id} updated.`);
@@ -364,14 +408,14 @@ AVAILABLE TOOLS:
    - "Product Backlog Item"  (this is the correct type for backlog items / PBIs)
    - "Feature"
    - "Epic"
-   Optional fields: "areaPath", "iterationPath", "description", "parentId" (number — link as child of existing item), "repoUrl" (GitHub repo URL to link, e.g. "https://github.com/owner/repo"), "repoBranch" (optional branch name).
+   Optional fields: "areaPath", "iterationPath", "description", "parentId" (number — link as child of existing item), "repoName" (Azure Repos repository name within the project), "repoBranch" (branch name — both repoName and repoBranch required together to link a branch to the work item), "tags" (semicolon-separated string, e.g. "frontend; urgent; sprint-5").
    ALL field values are plain text — titles, descriptions, types all work as-is. No escaping, encoding, or special handling needed. Just put the string directly in the JSON.
 
 4. **update** — Update a work item.
    \`\`\`tool
    { "tool": "update", "id": 12345, "state": "In Progress", "priority": 1 }
    \`\`\`
-   Also supports "repoUrl" and "repoBranch" to link a GitHub repository.
+   Supports "repoName"+"repoBranch" (together) and "tags" (semicolon-separated string).
 
 5. **delete** — Delete a work item.
    \`\`\`tool
@@ -380,7 +424,7 @@ AVAILABLE TOOLS:
 
 SPECIAL ASSIGNEES:
 - When the user says "me"/"my"/"myself" → use @Me in queries and "${userEmail}" for create/update.
-- When the user says "copilot"/"github copilot"/"assign to copilot" → use exactly "${COPILOT_IDENTITY}" as the assignedTo value. This assigns the work item to the GitHub Copilot agent so it can start implementing. When assigning to Copilot, ask the user which repository and optionally which branch Copilot should work on, and include "repoUrl" and "repoBranch" in the tool call.
+- When the user says "copilot"/"github copilot"/"assign to copilot" → use exactly "${COPILOT_IDENTITY}" as the assignedTo value. This assigns the work item to the GitHub Copilot agent so it can start implementing. When assigning to Copilot, ask the user which Azure Repos repository (by name) and branch Copilot should work on, and include "repoName" and "repoBranch" in the tool call. Both are required together.
 
 GUIDELINES:
 - Be conversational and helpful. Respond naturally, not just with raw data.
@@ -480,7 +524,7 @@ GUIDELINES:
       case "get": {
         const item = await this.backendClient.getWorkItem(org, project, tool.id, token);
         if (!item) { return `Work item #${tool.id} not found.`; }
-        return `Work item #${item.id}:\nType: ${item.type}\nTitle: ${item.title}\nState: ${item.state || "N/A"}\nAssigned: ${item.assignedTo || "Unassigned"}\nPriority: ${item.priority || "N/A"}\nArea: ${item.areaPath || "N/A"}\nIteration: ${item.iterationPath || "N/A"}${item.remainingWork != null ? `\nRemaining: ${item.remainingWork}h` : ""}${item.completedWork != null ? `\nCompleted: ${item.completedWork}h` : ""}${item.originalEstimate != null ? `\nEstimate: ${item.originalEstimate}h` : ""}${item.description ? `\nDescription: ${item.description.replace(/<[^>]*>/g, "").substring(0, 200)}` : ""}`;
+        return `Work item #${item.id}:\nType: ${item.type}\nTitle: ${item.title}\nState: ${item.state || "N/A"}\nAssigned: ${item.assignedTo || "Unassigned"}\nPriority: ${item.priority || "N/A"}\nArea: ${item.areaPath || "N/A"}\nIteration: ${item.iterationPath || "N/A"}${item.remainingWork != null ? `\nRemaining: ${item.remainingWork}h` : ""}${item.completedWork != null ? `\nCompleted: ${item.completedWork}h` : ""}${item.originalEstimate != null ? `\nEstimate: ${item.originalEstimate}h` : ""}${item.tags ? `\nTags: ${item.tags}` : ""}${item.description ? `\nDescription: ${item.description.replace(/<[^>]*>/g, "").substring(0, 200)}` : ""}`;
       }
       case "create": {
         const cfg = vscode.workspace.getConfiguration("sprintbridge");
@@ -501,14 +545,13 @@ GUIDELINES:
           remainingWork: tool.remainingWork,
           completedWork: tool.completedWork,
           originalEstimate: tool.originalEstimate,
+          tags: tool.tags,
         }, token);
         if (tool.parentId) {
           await this.backendClient.addParentLink(org, project, item.id, tool.parentId, token);
         }
-        if (tool.repoUrl) {
-          const comment = tool.repoBranch ? `GitHub Repository (branch: ${tool.repoBranch})` : "GitHub Repository";
-          const repoLink = tool.repoBranch ? `${tool.repoUrl}/tree/${tool.repoBranch}` : tool.repoUrl;
-          await this.backendClient.addHyperlink(org, project, item.id, repoLink, comment, token);
+        if (tool.repoName && tool.repoBranch) {
+          await this.linkBranch(org, project, token, item.id, tool.repoName, tool.repoBranch);
         }
         return `Created ${item.type} #${item.id}: "${item.title}"`;
       }
@@ -530,11 +573,10 @@ GUIDELINES:
         if (tool.remainingWork !== undefined) { req.remainingWork = tool.remainingWork; }
         if (tool.completedWork !== undefined) { req.completedWork = tool.completedWork; }
         if (tool.originalEstimate !== undefined) { req.originalEstimate = tool.originalEstimate; }
+        if (tool.tags != null) { req.tags = tool.tags; }
         const updated = await this.backendClient.updateWorkItem(org, project, tool.id, req, token);
-        if (tool.repoUrl) {
-          const comment = tool.repoBranch ? `GitHub Repository (branch: ${tool.repoBranch})` : "GitHub Repository";
-          const repoLink = tool.repoBranch ? `${tool.repoUrl}/tree/${tool.repoBranch}` : tool.repoUrl;
-          await this.backendClient.addHyperlink(org, project, tool.id, repoLink, comment, token);
+        if (tool.repoName && tool.repoBranch) {
+          await this.linkBranch(org, project, token, tool.id, tool.repoName, tool.repoBranch);
         }
         return `Updated #${updated.id}: ${updated.title} → ${updated.state}`;
       }
@@ -548,6 +590,45 @@ GUIDELINES:
     }
   }
 
+
+  private async linkBranch(org: string, project: string, token: string, workItemId: number, repoName: string, branchName: string): Promise<void> {
+    const repos = await this.getReposCached(org, project, token);
+    const repo = repos.find(r => r.name.toLowerCase() === repoName.toLowerCase());
+    if (!repo) { return; }
+    const projectId = await this.getProjectIdCached(org, project, token);
+    if (!projectId) { return; }
+    await this.backendClient.addBranchLink(org, project, workItemId, projectId, repo.id, branchName, token);
+  }
+
+  private async getReposCached(org: string, project: string, token: string): Promise<{ id: string; name: string }[]> {
+    if (!this.repoCache) {
+      this.repoCache = await this.backendClient.getRepositories(org, project, token);
+    }
+    return this.repoCache;
+  }
+
+  private async getTeamsCached(org: string, project: string, token: string): Promise<{ id: string; name: string }[]> {
+    if (!this.teamCache) {
+      this.teamCache = await this.backendClient.getTeams(org, project, token);
+    }
+    return this.teamCache;
+  }
+
+  private async getProjectIdCached(org: string, project: string, token: string): Promise<string> {
+    if (!this.projectIdCache) {
+      this.projectIdCache = await this.backendClient.getProjectId(org, project, token);
+    }
+    return this.projectIdCache;
+  }
+
+  /** Pre-fetch repos, teams, and projectId in the background so searches are instant. */
+  private warmCaches(org: string, project: string, token: string): void {
+    if (this.cacheWarmed) { return; }
+    this.cacheWarmed = true;
+    this.getReposCached(org, project, token).catch(() => {});
+    this.getTeamsCached(org, project, token).catch(() => {});
+    this.getProjectIdCached(org, project, token).catch(() => {});
+  }
 
   private friendlyError(error: any): string {
     const msg = error?.message || "Something went wrong.";

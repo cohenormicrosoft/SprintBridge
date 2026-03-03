@@ -129,7 +129,17 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
     .copilot-assign-label input[type="checkbox"] { display: none; }
     .copilot-assign-label.active { border-color: var(--btn-bg); background: var(--btn-bg); color: var(--btn-fg); }
     .copilot-icon { font-size: 14px; line-height: 1; }
-    .copilot-repo-fields { padding-left: 4px; }
+    .copilot-repo-fields { margin-top: 8px; margin-left: 8px; padding: 8px 10px; border-left: 2px solid var(--btn-bg); background: rgba(128,128,128,0.04); border-radius: 0 4px 4px 0; }
+    .copilot-repo-fields .repo-label { font-size: 11px; font-weight: 600; opacity: 0.7; margin-bottom: 4px; display: flex; align-items: center; gap: 4px; }
+    .copilot-repo-fields .repo-label::before { content: '🔀'; font-size: 12px; }
+    /* Mini-search dropdowns (used for repo search, team search) */
+    .mini-search-wrap { position: relative; }
+    .mini-search-suggestions { position: absolute; top: 100%; left: 0; right: 0; max-height: 160px; overflow-y: auto; background: var(--bg); border: 1px solid var(--btn-bg); border-radius: 4px; z-index: 10; display: none; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+    .mini-search-suggestions.open { display: block; }
+    .mini-search-item { padding: 6px 10px; font-size: 12px; cursor: pointer; }
+    .mini-search-item:hover, .mini-search-item.active { background: var(--btn-bg); color: var(--btn-fg); }
+    .mini-search-item strong { font-weight: 700; }
+    .mini-search-loading { padding: 6px 10px; font-size: 12px; opacity: 0.5; cursor: default; }
 
     /* Sprint Board */
     .board-toolbar { padding: 10px 12px; border-bottom: 1px solid var(--border); display: flex; gap: 8px; flex-wrap: wrap; align-items: center; flex-shrink: 0; background: var(--input-bg); }
@@ -141,12 +151,6 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
     .board-toolbar .board-field select:focus { border-color: var(--btn-bg); outline: none; }
     .board-load-btn { padding: 6px 16px; border-radius: 4px; font-size: 12px; font-weight: 600; letter-spacing: 0.3px; border: none; background: var(--btn-bg); color: var(--btn-fg); cursor: pointer; align-self: flex-end; transition: opacity 0.15s; }
     .board-load-btn:hover { opacity: 0.85; }
-    /* Team mini-search */
-    .team-search-wrap { position: relative; }
-    .team-suggestions { position: absolute; top: 100%; left: 0; right: 0; max-height: 180px; overflow-y: auto; background: var(--bg); border: 1px solid var(--btn-bg); border-radius: 4px; z-index: 10; display: none; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
-    .team-suggestions.open { display: block; }
-    .team-suggestion { padding: 6px 10px; font-size: 12px; cursor: pointer; }
-    .team-suggestion:hover, .team-suggestion.active { background: var(--btn-bg); color: var(--btn-fg); }
     .board-columns { display: flex; gap: 8px; padding: 10px; height: 100%; overflow-x: auto; min-height: 0; }
     .board-column { flex: 1; min-width: 150px; background: var(--input-bg); border-radius: 6px; display: flex; flex-direction: column; max-height: 100%; border: 1px solid var(--border); }
     .board-column-header { padding: 8px 10px; font-weight: 600; font-size: 12px; text-align: center; border-bottom: 1px solid var(--border); flex-shrink: 0; background: rgba(128,128,128,0.06); border-radius: 6px 6px 0 0; }
@@ -260,11 +264,12 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
   <!-- Board Panel -->
   <div class="panel" id="panel-board">
     <div class="board-toolbar">
-      <div class="board-field team-search-wrap">
+      <div class="board-field">
         <label>Team</label>
-        <input id="board-team" placeholder="Type to search teams..." autocomplete="off" />
-        <input type="hidden" id="board-team-value" />
-        <div class="team-suggestions" id="team-suggestions"></div>
+        <div class="mini-search-wrap">
+          <input id="board-team" placeholder="Search teams..." autocomplete="off" />
+          <div class="mini-search-suggestions" id="board-team-suggestions"></div>
+        </div>
       </div>
       <div class="board-field">
         <label>Sprint</label>
@@ -308,9 +313,18 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
         <input class="form-input" id="create-assigned" placeholder="e.g. user@example.com" />
         <label class="copilot-assign-label"><input type="checkbox" id="create-assign-copilot" /> <span class="copilot-icon">🤖</span> Assign to GitHub Copilot</label>
         <div class="copilot-repo-fields" id="create-repo-fields" style="display:none;">
-          <input class="form-input" id="create-repo-url" placeholder="https://github.com/owner/repo" style="margin-top:6px;" />
-          <input class="form-input" id="create-repo-branch" placeholder="Branch (optional, e.g. main)" style="margin-top:4px;" />
+          <div class="repo-label">Link branch for Copilot to work on</div>
+          <div class="mini-search-wrap">
+            <input class="form-input" id="create-repo-name" placeholder="Search repository..." autocomplete="off" />
+            <input type="hidden" id="create-repo-id" />
+            <div class="mini-search-suggestions" id="create-repo-suggestions"></div>
+          </div>
+          <input class="form-input" id="create-repo-branch" placeholder="Branch name (e.g. main)" style="margin-top:4px;" />
         </div>
+      </div>
+      <div class="form-group">
+        <label>Tags</label>
+        <input class="form-input" id="create-tags" placeholder="e.g. frontend; urgent; sprint-5 (semicolon separated)" />
       </div>
       <div class="form-group">
         <label>Priority</label>
@@ -589,9 +603,15 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
           '<div class="form-group"><label>Assigned To</label><input class="form-input" id="edit-assigned" value="' + escAttr(item.assignedTo || '') + '" />' +
             '<label class="copilot-assign-label"><input type="checkbox" id="edit-assign-copilot"' + (item.assignedTo && item.assignedTo.includes('GitHub Copilot') ? ' checked' : '') + ' /> <span class="copilot-icon">🤖</span> Assign to GitHub Copilot</label>' +
             '<div class="copilot-repo-fields" id="edit-repo-fields" style="' + (item.assignedTo && item.assignedTo.includes('GitHub Copilot') ? 'display:block' : 'display:none') + ';">' +
-              '<input class="form-input" id="edit-repo-url" placeholder="https://github.com/owner/repo" style="margin-top:6px;" />' +
-              '<input class="form-input" id="edit-repo-branch" placeholder="Branch (optional, e.g. main)" style="margin-top:4px;" />' +
+              '<div class="repo-label">Link branch for Copilot to work on</div>' +
+              '<div class="mini-search-wrap">' +
+                '<input class="form-input" id="edit-repo-name" placeholder="Search repository..." autocomplete="off" />' +
+                '<input type="hidden" id="edit-repo-id" />' +
+                '<div class="mini-search-suggestions" id="edit-repo-suggestions"></div>' +
+              '</div>' +
+              '<input class="form-input" id="edit-repo-branch" placeholder="Branch name (e.g. main)" style="margin-top:4px;" />' +
             '</div></div>' +
+          '<div class="form-group"><label>Tags</label><input class="form-input" id="edit-tags" value="' + escAttr(item.tags || '') + '" placeholder="e.g. frontend; urgent (semicolon separated)" /></div>' +
           '<div class="form-group"><label>Priority</label><select class="form-select" id="edit-priority">' +
             '<option value="">Not set</option>' +
             [1,2,3,4].map(p => '<option value="' + p + '"' + (p === item.priority ? ' selected' : '') + '>' + p + '</option>').join('') +
@@ -623,6 +643,7 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
           if (editRepoFields) editRepoFields.style.display = 'none';
         }
       });
+      setupMiniSearch('edit-repo-name', 'edit-repo-suggestions', 'searchRepos');
 
       detail.querySelector('#edit-save').addEventListener('click', () => {
         const updates = {};
@@ -634,7 +655,8 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
         const newRemaining = document.getElementById('edit-remaining').value;
         const newCompleted = document.getElementById('edit-completed').value;
         const newEstimate = document.getElementById('edit-estimate').value;
-        const editRepoUrl = editCopilotCb.checked ? (document.getElementById('edit-repo-url').value.trim() || undefined) : undefined;
+        const newTags = document.getElementById('edit-tags').value;
+        const editRepoName = editCopilotCb.checked ? (document.getElementById('edit-repo-name').value.trim() || undefined) : undefined;
         const editRepoBranch = editCopilotCb.checked ? (document.getElementById('edit-repo-branch').value.trim() || undefined) : undefined;
 
         if (newTitle !== item.title) updates.title = newTitle;
@@ -645,12 +667,13 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
         if (newRemaining !== String(item.remainingWork != null ? item.remainingWork : '')) updates.remainingWork = newRemaining !== '' ? parseFloat(newRemaining) : undefined;
         if (newCompleted !== String(item.completedWork != null ? item.completedWork : '')) updates.completedWork = newCompleted !== '' ? parseFloat(newCompleted) : undefined;
         if (newEstimate !== String(item.originalEstimate != null ? item.originalEstimate : '')) updates.originalEstimate = newEstimate !== '' ? parseFloat(newEstimate) : undefined;
+        if (newTags !== (item.tags || '')) updates.tags = newTags;
 
-        if (Object.keys(updates).length === 0 && !editRepoUrl) {
+        if (Object.keys(updates).length === 0 && !editRepoName) {
           document.getElementById('edit-status').innerHTML = '<div class="error-msg">No changes detected.</div>';
           return;
         }
-        vscode.postMessage({ command: 'updateWorkItem', id: item.id, updates, repoUrl: editRepoUrl, repoBranch: editRepoBranch });
+        vscode.postMessage({ command: 'updateWorkItem', id: item.id, updates, repoName: editRepoName, repoBranch: editRepoBranch });
       });
     }
 
@@ -674,6 +697,64 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
       }
     });
 
+    // Generic mini-search autocomplete (used for repos and teams)
+    function setupMiniSearch(inputId, suggestionsId, searchCommand, onSelect) {
+      const input = document.getElementById(inputId);
+      const suggestionsEl = document.getElementById(suggestionsId);
+      let debounceTimer = null;
+      let selectedIdx = -1;
+
+      input.addEventListener('focus', () => {
+        vscode.postMessage({ command: searchCommand, query: input.value.trim() });
+      });
+      input.addEventListener('input', () => {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          suggestionsEl.innerHTML = '<div class="mini-search-loading">Searching...</div>';
+          suggestionsEl.classList.add('open');
+          selectedIdx = -1;
+          vscode.postMessage({ command: searchCommand, query: input.value.trim() });
+        }, 200);
+      });
+      input.addEventListener('keydown', (e) => {
+        const items = suggestionsEl.querySelectorAll('.mini-search-item[data-name]');
+        if (!items.length) return;
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          selectedIdx = Math.min(selectedIdx + 1, items.length - 1);
+          items.forEach((el, i) => el.classList.toggle('active', i === selectedIdx));
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          selectedIdx = Math.max(selectedIdx - 1, 0);
+          items.forEach((el, i) => el.classList.toggle('active', i === selectedIdx));
+        } else if (e.key === 'Enter' && selectedIdx >= 0 && items[selectedIdx]) {
+          e.preventDefault();
+          items[selectedIdx].click();
+        } else if (e.key === 'Escape') {
+          suggestionsEl.classList.remove('open');
+        }
+      });
+      suggestionsEl.addEventListener('click', (e) => {
+        const item = e.target.closest('.mini-search-item[data-name]');
+        if (item) {
+          input.value = item.getAttribute('data-name');
+          suggestionsEl.classList.remove('open');
+          if (onSelect) onSelect(item.getAttribute('data-name'));
+        }
+      });
+      document.addEventListener('click', (e) => {
+        if (!e.target.closest('.mini-search-wrap')) suggestionsEl.classList.remove('open');
+      });
+    }
+
+    // Team search on Board — selecting a team loads its sprints
+    setupMiniSearch('board-team', 'board-team-suggestions', 'searchTeams', function(teamName) {
+      vscode.postMessage({ command: 'getIterations', team: teamName });
+    });
+
+    // Repo search for Copilot branch linking
+    setupMiniSearch('create-repo-name', 'create-repo-suggestions', 'searchRepos');
+
     document.getElementById('create-submit').addEventListener('click', () => {
       const title = document.getElementById('create-title').value.trim();
       if (!title) {
@@ -683,8 +764,9 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
       document.getElementById('create-submit').disabled = true;
       document.getElementById('create-status').innerHTML = '<div class="loading">Creating...</div>';
       const assignedTo = copilotCheckbox.checked ? COPILOT_IDENTITY : (assignedInput.value || undefined);
-      const repoUrl = copilotCheckbox.checked ? (document.getElementById('create-repo-url').value.trim() || undefined) : undefined;
+      const repoName = copilotCheckbox.checked ? (document.getElementById('create-repo-name').value.trim() || undefined) : undefined;
       const repoBranch = copilotCheckbox.checked ? (document.getElementById('create-repo-branch').value.trim() || undefined) : undefined;
+      const tags = document.getElementById('create-tags').value.trim() || undefined;
       vscode.postMessage({
         command: 'createWorkItem',
         type: document.getElementById('create-type').value,
@@ -693,84 +775,18 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
         assignedTo,
         priority: document.getElementById('create-priority').value ? parseInt(document.getElementById('create-priority').value) : undefined,
         parentId: document.getElementById('create-parent').value ? parseInt(document.getElementById('create-parent').value) : undefined,
-        repoUrl,
-        repoBranch
+        repoName,
+        repoBranch,
+        tags
       });
     });
 
     // --- Sprint Board ---
     const boardTeamInput = document.getElementById('board-team');
-    const boardTeamHidden = document.getElementById('board-team-value');
-    const teamSuggestions = document.getElementById('team-suggestions');
     const boardIterSel = document.getElementById('board-iteration');
-    let allTeams = [];
-    let teamSearchTimer = null;
-    let teamsLoaded = false;
-    let selectedTeamIdx = -1;
-
-    boardTeamInput.addEventListener('focus', () => {
-      if (!teamsLoaded) {
-        vscode.postMessage({ command: 'getTeams' });
-        teamsLoaded = true;
-      }
-      if (allTeams.length > 0) renderTeamSuggestions(boardTeamInput.value);
-    });
-    boardTeamInput.addEventListener('input', () => {
-      boardTeamHidden.value = '';
-      renderTeamSuggestions(boardTeamInput.value);
-    });
-    boardTeamInput.addEventListener('keydown', (e) => {
-      const items = teamSuggestions.querySelectorAll('.team-suggestion[data-name]');
-      if (!items.length) return;
-      if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        selectedTeamIdx = Math.min(selectedTeamIdx + 1, items.length - 1);
-        items.forEach((el, i) => el.classList.toggle('active', i === selectedTeamIdx));
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        selectedTeamIdx = Math.max(selectedTeamIdx - 1, 0);
-        items.forEach((el, i) => el.classList.toggle('active', i === selectedTeamIdx));
-      } else if (e.key === 'Enter' && selectedTeamIdx >= 0 && items[selectedTeamIdx]) {
-        e.preventDefault();
-        items[selectedTeamIdx].click();
-      } else if (e.key === 'Escape') {
-        teamSuggestions.classList.remove('open');
-      }
-    });
-    teamSuggestions.addEventListener('click', (e) => {
-      const item = e.target.closest('.team-suggestion[data-name]');
-      if (item) {
-        const teamName = item.getAttribute('data-name');
-        boardTeamInput.value = teamName;
-        boardTeamHidden.value = teamName;
-        teamSuggestions.classList.remove('open');
-        // Auto-load sprints for selected team
-        boardIterSel.innerHTML = '<option value="">Loading sprints...</option>';
-        vscode.postMessage({ command: 'getIterations', team: teamName });
-      }
-    });
-    document.addEventListener('click', (e) => {
-      if (!e.target.closest('.team-search-wrap')) teamSuggestions.classList.remove('open');
-    });
-
-    function renderTeamSuggestions(filter) {
-      const q = (filter || '').toLowerCase();
-      const filtered = q ? allTeams.filter(t => t.name.toLowerCase().includes(q)) : allTeams;
-      if (filtered.length === 0) {
-        teamSuggestions.innerHTML = '<div class="team-suggestion" style="opacity:0.5;cursor:default;">No matching teams</div>';
-        teamSuggestions.classList.add('open');
-        selectedTeamIdx = -1;
-        return;
-      }
-      teamSuggestions.innerHTML = filtered.map((t, i) =>
-        '<div class="team-suggestion" data-name="' + escAttr(t.name) + '">' + esc(t.name) + '</div>'
-      ).join('');
-      teamSuggestions.classList.add('open');
-      selectedTeamIdx = -1;
-    }
 
     document.getElementById('board-load').addEventListener('click', () => {
-      const team = boardTeamHidden.value || boardTeamInput.value.trim();
+      const team = boardTeamInput.value.trim();
       if (!team) {
         document.getElementById('board-container').innerHTML = '<div class="error-msg">Please enter a team name.</div>';
         return;
@@ -981,7 +997,8 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
           if (createCopilotLabel) createCopilotLabel.classList.remove('active');
           document.getElementById('create-priority').value = '';
           document.getElementById('create-parent').value = '';
-          document.getElementById('create-repo-url').value = '';
+          document.getElementById('create-repo-name').value = '';
+          document.getElementById('create-repo-id').value = '';
           document.getElementById('create-repo-branch').value = '';
           document.getElementById('create-repo-fields').style.display = 'none';
           break;
@@ -1010,10 +1027,6 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
             setTimeout(() => toast.remove(), 3000);
           }
           break;
-        case 'teamsLoaded':
-          allTeams = (msg.teams || []).map(t => ({ name: t.name }));
-          renderTeamSuggestions(boardTeamInput.value);
-          break;
         case 'iterationsLoaded':
           boardIterSel.innerHTML = '<option value="">Select sprint...</option>';
           (msg.iterations || []).forEach(it => {
@@ -1021,6 +1034,14 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
             boardIterSel.innerHTML += '<option value="' + escAttr(it.path) + '"' + (it.timeFrame === 'current' ? ' selected' : '') + '>' + esc(label) + '</option>';
           });
           break;
+        case 'repoSearchResults': {
+          renderMiniSearchResults('create-repo-suggestions', 'edit-repo-suggestions', msg.repos || [], msg.query);
+          break;
+        }
+        case 'teamSearchResults': {
+          renderMiniSearchResults('board-team-suggestions', null, msg.teams || [], msg.query);
+          break;
+        }
         case 'boardItemsLoaded':
           renderBoard(msg.items || []);
           break;
@@ -1052,6 +1073,23 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
 
     function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
     function escAttr(s) { return (s || '').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
+    function renderMiniSearchResults(elId1, elId2, items, query) {
+      var q = (query || '').toLowerCase().trim();
+      function highlight(text) {
+        if (!q) return esc(text);
+        var idx = text.toLowerCase().indexOf(q);
+        if (idx < 0) return esc(text);
+        return esc(text.substring(0, idx)) + '<strong>' + esc(text.substring(idx, idx + q.length)) + '</strong>' + esc(text.substring(idx + q.length));
+      }
+      var html = items.length === 0
+        ? '<div class="mini-search-loading">No results found</div>'
+        : items.map(function(r) { return '<div class="mini-search-item" data-name="' + escAttr(r.name) + '">' + highlight(r.name) + '</div>'; }).join('');
+      [elId1, elId2].forEach(function(id) {
+        if (!id) return;
+        var el = document.getElementById(id);
+        if (el) { el.innerHTML = html; el.classList.add('open'); }
+      });
+    }
     function sanitizeHtml(html) {
       if (!html) return '';
       const div = document.createElement('div');

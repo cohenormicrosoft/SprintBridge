@@ -17,6 +17,7 @@ export interface WorkItem {
   remainingWork?: number;
   completedWork?: number;
   originalEstimate?: number;
+  tags?: string;
 }
 
 export interface CreateWorkItemRequest {
@@ -31,6 +32,7 @@ export interface CreateWorkItemRequest {
   remainingWork?: number;
   completedWork?: number;
   originalEstimate?: number;
+  tags?: string;
 }
 
 export interface UpdateWorkItemRequest {
@@ -44,6 +46,7 @@ export interface UpdateWorkItemRequest {
   remainingWork?: number;
   completedWork?: number;
   originalEstimate?: number;
+  tags?: string;
 }
 
 const ADO_API_VERSION = "7.1";
@@ -86,6 +89,7 @@ export class BackendClient {
     if (request.remainingWork != null) { patchDoc.push({ op: "add", path: "/fields/Microsoft.VSTS.Scheduling.RemainingWork", value: request.remainingWork }); }
     if (request.completedWork != null) { patchDoc.push({ op: "add", path: "/fields/Microsoft.VSTS.Scheduling.CompletedWork", value: request.completedWork }); }
     if (request.originalEstimate != null) { patchDoc.push({ op: "add", path: "/fields/Microsoft.VSTS.Scheduling.OriginalEstimate", value: request.originalEstimate }); }
+    if (request.tags) { patchDoc.push({ op: "add", path: "/fields/System.Tags", value: request.tags }); }
 
     const encodedType = encodeURIComponent(request.type);
     const json = await this.adoRequest(
@@ -116,6 +120,7 @@ export class BackendClient {
     if (request.remainingWork != null) { patchDoc.push({ op: "add", path: "/fields/Microsoft.VSTS.Scheduling.RemainingWork", value: request.remainingWork }); }
     if (request.completedWork != null) { patchDoc.push({ op: "add", path: "/fields/Microsoft.VSTS.Scheduling.CompletedWork", value: request.completedWork }); }
     if (request.originalEstimate != null) { patchDoc.push({ op: "add", path: "/fields/Microsoft.VSTS.Scheduling.OriginalEstimate", value: request.originalEstimate }); }
+    if (request.tags != null) { patchDoc.push({ op: "add", path: "/fields/System.Tags", value: request.tags }); }
 
     if (patchDoc.length === 0) {
       const item = await this.getWorkItem(organization, project, id, token);
@@ -182,30 +187,62 @@ export class BackendClient {
     return values.map(mapWorkItem);
   }
 
-  async addHyperlink(
+  async addBranchLink(
     organization: string,
     project: string,
     workItemId: number,
-    url: string,
-    comment?: string,
-    token?: string
+    projectId: string,
+    repoId: string,
+    branchName: string,
+    token: string
   ): Promise<void> {
+    // vstfs:///Git/Ref/{ProjectID}/{RepoID}/GB{BranchName}
+    const encodedBranch = encodeURIComponent(branchName).replace(/%2F/g, "%252F");
+    const artifactUrl = `vstfs:///Git/Ref/${projectId}/${repoId}/GB${encodedBranch}`;
     const patchDoc = [{
       op: "add",
       path: "/relations/-",
       value: {
-        rel: "Hyperlink",
-        url,
-        attributes: { comment: comment || "GitHub Repository" },
+        rel: "ArtifactLink",
+        url: artifactUrl,
+        attributes: { name: "Branch" },
       },
     }];
     await this.adoRequest(
       "PATCH",
       `/${organization}/${project}/_apis/wit/workitems/${workItemId}?api-version=${ADO_API_VERSION}`,
-      token!,
+      token,
       patchDoc,
       "application/json-patch+json"
     );
+  }
+
+  async getRepositories(
+    organization: string,
+    project: string,
+    token: string
+  ): Promise<{ id: string; name: string }[]> {
+    const json = await this.adoRequest(
+      "GET",
+      `/${organization}/${project}/_apis/git/repositories?api-version=${ADO_API_VERSION}`,
+      token
+    );
+    const items = json?.value;
+    if (!items || !Array.isArray(items)) { return []; }
+    return items.map((r: any) => ({ id: r.id, name: r.name }));
+  }
+
+  async getProjectId(
+    organization: string,
+    project: string,
+    token: string
+  ): Promise<string> {
+    const json = await this.adoRequest(
+      "GET",
+      `/${organization}/_apis/projects/${project}?api-version=${ADO_API_VERSION}`,
+      token
+    );
+    return json?.id || "";
   }
 
   async addParentLink(
@@ -260,14 +297,22 @@ export class BackendClient {
     project: string,
     token: string
   ): Promise<{ id: string; name: string }[]> {
-    const json = await this.adoRequest(
-      "GET",
-      `/${organization}/_apis/projects/${project}/teams?api-version=${ADO_API_VERSION}`,
-      token
-    );
-    const items = json?.value;
-    if (!items || !Array.isArray(items)) { return []; }
-    return items.map((t: any) => ({ id: t.id, name: t.name }));
+    const allTeams: { id: string; name: string }[] = [];
+    const pageSize = 500;
+    let skip = 0;
+    while (true) {
+      const json = await this.adoRequest(
+        "GET",
+        `/${organization}/_apis/projects/${project}/teams?$top=${pageSize}&$skip=${skip}&api-version=${ADO_API_VERSION}`,
+        token
+      );
+      const items = json?.value;
+      if (!items || !Array.isArray(items) || items.length === 0) { break; }
+      allTeams.push(...items.map((t: any) => ({ id: t.id, name: t.name })));
+      if (items.length < pageSize) { break; }
+      skip += pageSize;
+    }
+    return allTeams;
   }
 
   async getTeamFieldValues(
@@ -394,5 +439,6 @@ function mapWorkItem(json: any): WorkItem {
     remainingWork: fields["Microsoft.VSTS.Scheduling.RemainingWork"] ?? undefined,
     completedWork: fields["Microsoft.VSTS.Scheduling.CompletedWork"] ?? undefined,
     originalEstimate: fields["Microsoft.VSTS.Scheduling.OriginalEstimate"] ?? undefined,
+    tags: fields["System.Tags"] || undefined,
   };
 }
