@@ -147,8 +147,8 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
     .feedback-fab:active { transform: scale(0.95); }
 
     /* Sprint Board */
-    .board-toolbar { padding: 10px 12px; border-bottom: 1px solid var(--border); display: flex; gap: 8px; flex-wrap: wrap; align-items: center; flex-shrink: 0; background: var(--input-bg); }
-    .board-toolbar .board-field { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 100px; }
+    .board-toolbar { padding: 10px 12px; border-bottom: 1px solid var(--border); display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; flex-shrink: 0; background: var(--input-bg); }
+    .board-toolbar .board-field { display: flex; flex-direction: column; gap: 2px; flex: 1 1 0; min-width: 80px; }
     .board-toolbar .board-field label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.6; font-weight: 600; }
     .board-toolbar .board-field input,
     .board-toolbar .board-field select { background: var(--bg); color: var(--input-fg); border: 1px solid var(--border); padding: 5px 8px; font-size: 12px; border-radius: 4px; }
@@ -709,14 +709,24 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
       const suggestionsEl = document.getElementById(suggestionsId);
       let debounceTimer = null;
       let selectedIdx = -1;
+      let hasLoaded = false;
+
+      function loadingHtml() {
+        if (hasLoaded) return '<div class="mini-search-loading">Searching...</div>';
+        return '<div class="mini-search-loading">⏳ Loading data — this may take a moment for large organizations...</div>';
+      }
 
       input.addEventListener('focus', () => {
+        if (!hasLoaded) {
+          suggestionsEl.innerHTML = loadingHtml();
+          suggestionsEl.classList.add('open');
+        }
         vscode.postMessage({ command: searchCommand, query: input.value.trim() });
       });
       input.addEventListener('input', () => {
         clearTimeout(debounceTimer);
         debounceTimer = setTimeout(() => {
-          suggestionsEl.innerHTML = '<div class="mini-search-loading">Searching...</div>';
+          suggestionsEl.innerHTML = loadingHtml();
           suggestionsEl.classList.add('open');
           selectedIdx = -1;
           vscode.postMessage({ command: searchCommand, query: input.value.trim() });
@@ -751,6 +761,8 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
       document.addEventListener('click', (e) => {
         if (!e.target.closest('.mini-search-wrap')) suggestionsEl.classList.remove('open');
       });
+      // Mark loaded when first results arrive
+      suggestionsEl._markLoaded = function() { hasLoaded = true; };
     }
 
     // Team search on Board — selecting a team loads its sprints
@@ -1093,7 +1105,11 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
       [elId1, elId2].forEach(function(id) {
         if (!id) return;
         var el = document.getElementById(id);
-        if (el) { el.innerHTML = html; el.classList.add('open'); }
+        if (el) {
+          el.innerHTML = html;
+          el.classList.add('open');
+          if (el._markLoaded) el._markLoaded();
+        }
       });
     }
     function sanitizeHtml(html) {
