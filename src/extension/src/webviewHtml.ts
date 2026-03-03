@@ -141,6 +141,11 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
     .mini-search-item strong { font-weight: 700; }
     .mini-search-loading { padding: 6px 10px; font-size: 12px; opacity: 0.5; cursor: default; }
 
+    /* Feedback FAB */
+    .feedback-fab { position: fixed; bottom: 12px; right: 12px; z-index: 100; background: var(--btn-bg); color: var(--btn-fg); border: none; border-radius: 50%; width: 32px; height: 32px; font-size: 15px; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; transition: transform 0.15s, box-shadow 0.15s; }
+    .feedback-fab:hover { transform: scale(1.1); box-shadow: 0 4px 14px rgba(0,0,0,0.4); }
+    .feedback-fab:active { transform: scale(0.95); }
+
     /* Sprint Board */
     .board-toolbar { padding: 10px 12px; border-bottom: 1px solid var(--border); display: flex; gap: 8px; flex-wrap: wrap; align-items: center; flex-shrink: 0; background: var(--input-bg); }
     .board-toolbar .board-field { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 100px; }
@@ -386,6 +391,7 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
 
   </div><!-- /main-app -->
   <div class="copy-toast" id="copy-toast">Copied!</div>
+  <button class="feedback-fab" id="feedback-btn" title="Report Bug / Give Feedback">🐛</button>
 
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
@@ -1098,6 +1104,19 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
       div.querySelectorAll('script,style,iframe,object,embed').forEach(el => el.remove());
       return div.innerHTML;
     }
+
+    // Feedback button
+    document.getElementById('feedback-btn').addEventListener('click', () => {
+      const subject = encodeURIComponent('[SprintBridge] Feedback / Bug Report');
+      const body = encodeURIComponent(
+        'Hi SprintBridge team,\\n\\n' +
+        '--- Please describe your feedback or bug below ---\\n\\n\\n\\n' +
+        '--- Steps to reproduce (if bug) ---\\n1. \\n2. \\n3. \\n\\n' +
+        '--- Expected vs actual behavior ---\\n\\n\\n' +
+        '--- Additional context ---\\nExtension version: 0.4.0\\n'
+      );
+      vscode.postMessage({ command: 'openExternal', url: 'mailto:cohenor@microsoft.com?subject=' + subject + '&body=' + body });
+    });
   </script>
 </body>
 </html>`;
