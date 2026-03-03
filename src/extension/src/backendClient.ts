@@ -182,6 +182,32 @@ export class BackendClient {
     return values.map(mapWorkItem);
   }
 
+  async addHyperlink(
+    organization: string,
+    project: string,
+    workItemId: number,
+    url: string,
+    comment?: string,
+    token?: string
+  ): Promise<void> {
+    const patchDoc = [{
+      op: "add",
+      path: "/relations/-",
+      value: {
+        rel: "Hyperlink",
+        url,
+        attributes: { comment: comment || "GitHub Repository" },
+      },
+    }];
+    await this.adoRequest(
+      "PATCH",
+      `/${organization}/${project}/_apis/wit/workitems/${workItemId}?api-version=${ADO_API_VERSION}`,
+      token!,
+      patchDoc,
+      "application/json-patch+json"
+    );
+  }
+
   async addParentLink(
     organization: string,
     project: string,

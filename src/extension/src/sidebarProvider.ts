@@ -133,7 +133,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           await this.handleCreate(org, project, token, msg);
           break;
         case "updateWorkItem":
-          await this.handleUpdate(org, project, token, msg.id, msg.updates);
+          await this.handleUpdate(org, project, token, msg.id, msg.updates, msg.repoUrl, msg.repoBranch);
           break;
         case "deleteWorkItem":
           await this.handleDelete(org, project, token, msg.id);
@@ -221,10 +221,15 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     if (msg.parentId) {
       await this.backendClient.addParentLink(org, project, item.id, msg.parentId, token);
     }
+    if (msg.repoUrl) {
+      const comment = msg.repoBranch ? `GitHub Repository (branch: ${msg.repoBranch})` : "GitHub Repository";
+      const url = msg.repoBranch ? `${msg.repoUrl}/tree/${msg.repoBranch}` : msg.repoUrl;
+      await this.backendClient.addHyperlink(org, project, item.id, url, comment, token);
+    }
     this.postMessage({ command: "workItemCreated", item });
   }
 
-  private async handleUpdate(org: string, project: string, token: string, id: number, updates: any): Promise<void> {
+  private async handleUpdate(org: string, project: string, token: string, id: number, updates: any, repoUrl?: string, repoBranch?: string): Promise<void> {
     if (!id) {
       this.postMessage({ command: "error", message: `Update failed: Invalid work item ID (${id})`, context: "edit" });
       return;
@@ -241,6 +246,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
     try {
       const item = await this.backendClient.updateWorkItem(org, project, id, request, token);
+      if (repoUrl) {
+        const comment = repoBranch ? `GitHub Repository (branch: ${repoBranch})` : "GitHub Repository";
+        const url = repoBranch ? `${repoUrl}/tree/${repoBranch}` : repoUrl;
+        await this.backendClient.addHyperlink(org, project, id, url, comment, token);
+      }
       this.postMessage({ command: "workItemUpdated", item });
       vscode.window.showInformationMessage(`Work item #${id} updated.`);
     } catch (error: any) {
@@ -354,13 +364,14 @@ AVAILABLE TOOLS:
    - "Product Backlog Item"  (this is the correct type for backlog items / PBIs)
    - "Feature"
    - "Epic"
-   Optional fields: "areaPath", "iterationPath", "description", "parentId" (number — link as child of existing item).
+   Optional fields: "areaPath", "iterationPath", "description", "parentId" (number — link as child of existing item), "repoUrl" (GitHub repo URL to link, e.g. "https://github.com/owner/repo"), "repoBranch" (optional branch name).
    ALL field values are plain text — titles, descriptions, types all work as-is. No escaping, encoding, or special handling needed. Just put the string directly in the JSON.
 
 4. **update** — Update a work item.
    \`\`\`tool
    { "tool": "update", "id": 12345, "state": "In Progress", "priority": 1 }
    \`\`\`
+   Also supports "repoUrl" and "repoBranch" to link a GitHub repository.
 
 5. **delete** — Delete a work item.
    \`\`\`tool
@@ -369,7 +380,7 @@ AVAILABLE TOOLS:
 
 SPECIAL ASSIGNEES:
 - When the user says "me"/"my"/"myself" → use @Me in queries and "${userEmail}" for create/update.
-- When the user says "copilot"/"github copilot"/"assign to copilot" → use exactly "${COPILOT_IDENTITY}" as the assignedTo value. This assigns the work item to the GitHub Copilot agent so it can start implementing.
+- When the user says "copilot"/"github copilot"/"assign to copilot" → use exactly "${COPILOT_IDENTITY}" as the assignedTo value. This assigns the work item to the GitHub Copilot agent so it can start implementing. When assigning to Copilot, ask the user which repository and optionally which branch Copilot should work on, and include "repoUrl" and "repoBranch" in the tool call.
 
 GUIDELINES:
 - Be conversational and helpful. Respond naturally, not just with raw data.
@@ -494,6 +505,11 @@ GUIDELINES:
         if (tool.parentId) {
           await this.backendClient.addParentLink(org, project, item.id, tool.parentId, token);
         }
+        if (tool.repoUrl) {
+          const comment = tool.repoBranch ? `GitHub Repository (branch: ${tool.repoBranch})` : "GitHub Repository";
+          const repoLink = tool.repoBranch ? `${tool.repoUrl}/tree/${tool.repoBranch}` : tool.repoUrl;
+          await this.backendClient.addHyperlink(org, project, item.id, repoLink, comment, token);
+        }
         return `Created ${item.type} #${item.id}: "${item.title}"`;
       }
       case "update": {
@@ -515,6 +531,11 @@ GUIDELINES:
         if (tool.completedWork !== undefined) { req.completedWork = tool.completedWork; }
         if (tool.originalEstimate !== undefined) { req.originalEstimate = tool.originalEstimate; }
         const updated = await this.backendClient.updateWorkItem(org, project, tool.id, req, token);
+        if (tool.repoUrl) {
+          const comment = tool.repoBranch ? `GitHub Repository (branch: ${tool.repoBranch})` : "GitHub Repository";
+          const repoLink = tool.repoBranch ? `${tool.repoUrl}/tree/${tool.repoBranch}` : tool.repoUrl;
+          await this.backendClient.addHyperlink(org, project, tool.id, repoLink, comment, token);
+        }
         return `Updated #${updated.id}: ${updated.title} → ${updated.state}`;
       }
       case "delete": {

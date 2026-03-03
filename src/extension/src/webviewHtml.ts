@@ -129,6 +129,7 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
     .copilot-assign-label input[type="checkbox"] { display: none; }
     .copilot-assign-label.active { border-color: var(--btn-bg); background: var(--btn-bg); color: var(--btn-fg); }
     .copilot-icon { font-size: 14px; line-height: 1; }
+    .copilot-repo-fields { padding-left: 4px; }
 
     /* Sprint Board */
     .board-toolbar { padding: 10px 12px; border-bottom: 1px solid var(--border); display: flex; gap: 8px; flex-wrap: wrap; align-items: center; flex-shrink: 0; background: var(--input-bg); }
@@ -140,6 +141,12 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
     .board-toolbar .board-field select:focus { border-color: var(--btn-bg); outline: none; }
     .board-load-btn { padding: 6px 16px; border-radius: 4px; font-size: 12px; font-weight: 600; letter-spacing: 0.3px; border: none; background: var(--btn-bg); color: var(--btn-fg); cursor: pointer; align-self: flex-end; transition: opacity 0.15s; }
     .board-load-btn:hover { opacity: 0.85; }
+    /* Team mini-search */
+    .team-search-wrap { position: relative; }
+    .team-suggestions { position: absolute; top: 100%; left: 0; right: 0; max-height: 180px; overflow-y: auto; background: var(--bg); border: 1px solid var(--btn-bg); border-radius: 4px; z-index: 10; display: none; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+    .team-suggestions.open { display: block; }
+    .team-suggestion { padding: 6px 10px; font-size: 12px; cursor: pointer; }
+    .team-suggestion:hover, .team-suggestion.active { background: var(--btn-bg); color: var(--btn-fg); }
     .board-columns { display: flex; gap: 8px; padding: 10px; height: 100%; overflow-x: auto; min-height: 0; }
     .board-column { flex: 1; min-width: 150px; background: var(--input-bg); border-radius: 6px; display: flex; flex-direction: column; max-height: 100%; border: 1px solid var(--border); }
     .board-column-header { padding: 8px 10px; font-weight: 600; font-size: 12px; text-align: center; border-bottom: 1px solid var(--border); flex-shrink: 0; background: rgba(128,128,128,0.06); border-radius: 6px 6px 0 0; }
@@ -253,14 +260,16 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
   <!-- Board Panel -->
   <div class="panel" id="panel-board">
     <div class="board-toolbar">
-      <div class="board-field">
+      <div class="board-field team-search-wrap">
         <label>Team</label>
-        <input id="board-team" placeholder="e.g. MyTeam" />
+        <input id="board-team" placeholder="Type to search teams..." autocomplete="off" />
+        <input type="hidden" id="board-team-value" />
+        <div class="team-suggestions" id="team-suggestions"></div>
       </div>
       <div class="board-field">
         <label>Sprint</label>
         <select id="board-iteration">
-          <option value="">Enter team → load sprints</option>
+          <option value="">Select team first</option>
         </select>
       </div>
       <label class="toggle-wrap" style="align-self:flex-end;"><input type="checkbox" id="board-me-filter" /><span class="toggle-switch"></span>My items</label>
@@ -298,6 +307,10 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
         <label>Assigned To</label>
         <input class="form-input" id="create-assigned" placeholder="e.g. user@example.com" />
         <label class="copilot-assign-label"><input type="checkbox" id="create-assign-copilot" /> <span class="copilot-icon">🤖</span> Assign to GitHub Copilot</label>
+        <div class="copilot-repo-fields" id="create-repo-fields" style="display:none;">
+          <input class="form-input" id="create-repo-url" placeholder="https://github.com/owner/repo" style="margin-top:6px;" />
+          <input class="form-input" id="create-repo-branch" placeholder="Branch (optional, e.g. main)" style="margin-top:4px;" />
+        </div>
       </div>
       <div class="form-group">
         <label>Priority</label>
@@ -574,7 +587,11 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
           '<div class="form-group"><label>Title</label><input class="form-input" id="edit-title" value="' + escAttr(item.title) + '" /></div>' +
           '<div class="form-group"><label>State</label><input class="form-input" id="edit-state" value="' + escAttr(item.state || '') + '" /></div>' +
           '<div class="form-group"><label>Assigned To</label><input class="form-input" id="edit-assigned" value="' + escAttr(item.assignedTo || '') + '" />' +
-            '<label class="copilot-assign-label"><input type="checkbox" id="edit-assign-copilot"' + (item.assignedTo && item.assignedTo.includes('GitHub Copilot') ? ' checked' : '') + ' /> <span class="copilot-icon">🤖</span> Assign to GitHub Copilot</label></div>' +
+            '<label class="copilot-assign-label"><input type="checkbox" id="edit-assign-copilot"' + (item.assignedTo && item.assignedTo.includes('GitHub Copilot') ? ' checked' : '') + ' /> <span class="copilot-icon">🤖</span> Assign to GitHub Copilot</label>' +
+            '<div class="copilot-repo-fields" id="edit-repo-fields" style="' + (item.assignedTo && item.assignedTo.includes('GitHub Copilot') ? 'display:block' : 'display:none') + ';">' +
+              '<input class="form-input" id="edit-repo-url" placeholder="https://github.com/owner/repo" style="margin-top:6px;" />' +
+              '<input class="form-input" id="edit-repo-branch" placeholder="Branch (optional, e.g. main)" style="margin-top:4px;" />' +
+            '</div></div>' +
           '<div class="form-group"><label>Priority</label><select class="form-select" id="edit-priority">' +
             '<option value="">Not set</option>' +
             [1,2,3,4].map(p => '<option value="' + p + '"' + (p === item.priority ? ' selected' : '') + '>' + p + '</option>').join('') +
@@ -592,15 +609,18 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
       const editAssignedInput = document.getElementById('edit-assigned');
       const editCopilotLabel = editCopilotCb.closest('.copilot-assign-label');
       if (editCopilotCb.checked) { editAssignedInput.disabled = true; if (editCopilotLabel) editCopilotLabel.classList.add('active'); }
+      const editRepoFields = document.getElementById('edit-repo-fields');
       editCopilotCb.addEventListener('change', () => {
         if (editCopilotCb.checked) {
           editAssignedInput.value = COPILOT_IDENTITY;
           editAssignedInput.disabled = true;
           if (editCopilotLabel) editCopilotLabel.classList.add('active');
+          if (editRepoFields) editRepoFields.style.display = 'block';
         } else {
           editAssignedInput.value = item.assignedTo || '';
           editAssignedInput.disabled = false;
           if (editCopilotLabel) editCopilotLabel.classList.remove('active');
+          if (editRepoFields) editRepoFields.style.display = 'none';
         }
       });
 
@@ -614,6 +634,8 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
         const newRemaining = document.getElementById('edit-remaining').value;
         const newCompleted = document.getElementById('edit-completed').value;
         const newEstimate = document.getElementById('edit-estimate').value;
+        const editRepoUrl = editCopilotCb.checked ? (document.getElementById('edit-repo-url').value.trim() || undefined) : undefined;
+        const editRepoBranch = editCopilotCb.checked ? (document.getElementById('edit-repo-branch').value.trim() || undefined) : undefined;
 
         if (newTitle !== item.title) updates.title = newTitle;
         if (newState !== (item.state || '')) updates.state = newState;
@@ -624,11 +646,11 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
         if (newCompleted !== String(item.completedWork != null ? item.completedWork : '')) updates.completedWork = newCompleted !== '' ? parseFloat(newCompleted) : undefined;
         if (newEstimate !== String(item.originalEstimate != null ? item.originalEstimate : '')) updates.originalEstimate = newEstimate !== '' ? parseFloat(newEstimate) : undefined;
 
-        if (Object.keys(updates).length === 0) {
+        if (Object.keys(updates).length === 0 && !editRepoUrl) {
           document.getElementById('edit-status').innerHTML = '<div class="error-msg">No changes detected.</div>';
           return;
         }
-        vscode.postMessage({ command: 'updateWorkItem', id: item.id, updates });
+        vscode.postMessage({ command: 'updateWorkItem', id: item.id, updates, repoUrl: editRepoUrl, repoBranch: editRepoBranch });
       });
     }
 
@@ -638,14 +660,17 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
 
     copilotCheckbox.addEventListener('change', () => {
       const label = copilotCheckbox.closest('.copilot-assign-label');
+      const repoFields = document.getElementById('create-repo-fields');
       if (copilotCheckbox.checked) {
         assignedInput.value = COPILOT_IDENTITY;
         assignedInput.disabled = true;
         if (label) label.classList.add('active');
+        if (repoFields) repoFields.style.display = 'block';
       } else {
         assignedInput.value = '';
         assignedInput.disabled = false;
         if (label) label.classList.remove('active');
+        if (repoFields) repoFields.style.display = 'none';
       }
     });
 
@@ -658,6 +683,8 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
       document.getElementById('create-submit').disabled = true;
       document.getElementById('create-status').innerHTML = '<div class="loading">Creating...</div>';
       const assignedTo = copilotCheckbox.checked ? COPILOT_IDENTITY : (assignedInput.value || undefined);
+      const repoUrl = copilotCheckbox.checked ? (document.getElementById('create-repo-url').value.trim() || undefined) : undefined;
+      const repoBranch = copilotCheckbox.checked ? (document.getElementById('create-repo-branch').value.trim() || undefined) : undefined;
       vscode.postMessage({
         command: 'createWorkItem',
         type: document.getElementById('create-type').value,
@@ -665,28 +692,85 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
         description: document.getElementById('create-desc').value || undefined,
         assignedTo,
         priority: document.getElementById('create-priority').value ? parseInt(document.getElementById('create-priority').value) : undefined,
-        parentId: document.getElementById('create-parent').value ? parseInt(document.getElementById('create-parent').value) : undefined
+        parentId: document.getElementById('create-parent').value ? parseInt(document.getElementById('create-parent').value) : undefined,
+        repoUrl,
+        repoBranch
       });
     });
 
     // --- Sprint Board ---
     const boardTeamInput = document.getElementById('board-team');
+    const boardTeamHidden = document.getElementById('board-team-value');
+    const teamSuggestions = document.getElementById('team-suggestions');
     const boardIterSel = document.getElementById('board-iteration');
-    let boardTeamTimer = null;
+    let allTeams = [];
+    let teamSearchTimer = null;
+    let teamsLoaded = false;
+    let selectedTeamIdx = -1;
 
+    boardTeamInput.addEventListener('focus', () => {
+      if (!teamsLoaded) {
+        vscode.postMessage({ command: 'getTeams' });
+        teamsLoaded = true;
+      }
+      if (allTeams.length > 0) renderTeamSuggestions(boardTeamInput.value);
+    });
     boardTeamInput.addEventListener('input', () => {
-      clearTimeout(boardTeamTimer);
-      boardTeamTimer = setTimeout(() => {
-        const team = boardTeamInput.value.trim();
-        if (team) {
-          boardIterSel.innerHTML = '<option value="">Loading sprints...</option>';
-          vscode.postMessage({ command: 'getIterations', team });
-        }
-      }, 600);
+      boardTeamHidden.value = '';
+      renderTeamSuggestions(boardTeamInput.value);
+    });
+    boardTeamInput.addEventListener('keydown', (e) => {
+      const items = teamSuggestions.querySelectorAll('.team-suggestion[data-name]');
+      if (!items.length) return;
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        selectedTeamIdx = Math.min(selectedTeamIdx + 1, items.length - 1);
+        items.forEach((el, i) => el.classList.toggle('active', i === selectedTeamIdx));
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        selectedTeamIdx = Math.max(selectedTeamIdx - 1, 0);
+        items.forEach((el, i) => el.classList.toggle('active', i === selectedTeamIdx));
+      } else if (e.key === 'Enter' && selectedTeamIdx >= 0 && items[selectedTeamIdx]) {
+        e.preventDefault();
+        items[selectedTeamIdx].click();
+      } else if (e.key === 'Escape') {
+        teamSuggestions.classList.remove('open');
+      }
+    });
+    teamSuggestions.addEventListener('click', (e) => {
+      const item = e.target.closest('.team-suggestion[data-name]');
+      if (item) {
+        const teamName = item.getAttribute('data-name');
+        boardTeamInput.value = teamName;
+        boardTeamHidden.value = teamName;
+        teamSuggestions.classList.remove('open');
+        // Auto-load sprints for selected team
+        boardIterSel.innerHTML = '<option value="">Loading sprints...</option>';
+        vscode.postMessage({ command: 'getIterations', team: teamName });
+      }
+    });
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.team-search-wrap')) teamSuggestions.classList.remove('open');
     });
 
+    function renderTeamSuggestions(filter) {
+      const q = (filter || '').toLowerCase();
+      const filtered = q ? allTeams.filter(t => t.name.toLowerCase().includes(q)) : allTeams;
+      if (filtered.length === 0) {
+        teamSuggestions.innerHTML = '<div class="team-suggestion" style="opacity:0.5;cursor:default;">No matching teams</div>';
+        teamSuggestions.classList.add('open');
+        selectedTeamIdx = -1;
+        return;
+      }
+      teamSuggestions.innerHTML = filtered.map((t, i) =>
+        '<div class="team-suggestion" data-name="' + escAttr(t.name) + '">' + esc(t.name) + '</div>'
+      ).join('');
+      teamSuggestions.classList.add('open');
+      selectedTeamIdx = -1;
+    }
+
     document.getElementById('board-load').addEventListener('click', () => {
-      const team = boardTeamInput.value.trim();
+      const team = boardTeamHidden.value || boardTeamInput.value.trim();
       if (!team) {
         document.getElementById('board-container').innerHTML = '<div class="error-msg">Please enter a team name.</div>';
         return;
@@ -897,6 +981,9 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
           if (createCopilotLabel) createCopilotLabel.classList.remove('active');
           document.getElementById('create-priority').value = '';
           document.getElementById('create-parent').value = '';
+          document.getElementById('create-repo-url').value = '';
+          document.getElementById('create-repo-branch').value = '';
+          document.getElementById('create-repo-fields').style.display = 'none';
           break;
         case 'workItemUpdated':
           showDetail(msg.item);
@@ -922,6 +1009,10 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
             listEl.insertBefore(toast, listEl.firstChild);
             setTimeout(() => toast.remove(), 3000);
           }
+          break;
+        case 'teamsLoaded':
+          allTeams = (msg.teams || []).map(t => ({ name: t.name }));
+          renderTeamSuggestions(boardTeamInput.value);
           break;
         case 'iterationsLoaded':
           boardIterSel.innerHTML = '<option value="">Select sprint...</option>';
