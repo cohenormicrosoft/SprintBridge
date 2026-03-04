@@ -26,10 +26,11 @@ SprintBridge is a VS Code extension that puts your Azure DevOps sprint workflow 
 
 An AI chat built into the sidebar that understands your Azure DevOps context. Just describe what you need in plain English — it knows your identity, your project, and your area path.
 
-> *"Show my active bugs"*
-> *"Create a task for API refactoring assigned to me"*
-> *"What's the total remaining work on my sprint items?"*
-> *"Move item 54321 to In Review"*
+> "Show my active bugs"<br>
+> "Create a task for API refactoring assigned to me"<br>
+> "What's the total remaining work on my sprint items?"<br>
+> "Move item 54321 to In Review"<br>
+> "Create Product Backlog Item as parent and 3 work items on me"<br> 
 
 - Conversation memory — ask follow-up questions naturally
 - Creates, queries, updates, and deletes work items on your behalf
