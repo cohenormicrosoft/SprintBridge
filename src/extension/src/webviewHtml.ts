@@ -129,7 +129,7 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
     .copilot-assign-label input[type="checkbox"] { display: none; }
     .copilot-assign-label.active { border-color: var(--btn-bg); background: var(--btn-bg); color: var(--btn-fg); }
     .copilot-icon { font-size: 14px; line-height: 1; }
-    .copilot-repo-fields { margin-top: 8px; margin-left: 8px; padding: 8px 10px; border-left: 2px solid var(--btn-bg); background: rgba(128,128,128,0.04); border-radius: 0 4px 4px 0; }
+    .copilot-repo-fields { display: none; margin-top: 8px; margin-left: 8px; padding: 8px 10px; border-left: 2px solid var(--btn-bg); background: rgba(128,128,128,0.04); border-radius: 0 4px 4px 0; }
     .copilot-repo-fields .repo-label { font-size: 11px; font-weight: 600; opacity: 0.7; margin-bottom: 4px; display: flex; align-items: center; gap: 4px; }
     .copilot-repo-fields .repo-label::before { content: '🔀'; font-size: 12px; }
     /* Mini-search dropdowns (used for repo search, team search) */

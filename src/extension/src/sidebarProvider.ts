@@ -524,7 +524,7 @@ GUIDELINES:
       case "get": {
         const item = await this.backendClient.getWorkItem(org, project, tool.id, token);
         if (!item) { return `Work item #${tool.id} not found.`; }
-        return `Work item #${item.id}:\nType: ${item.type}\nTitle: ${item.title}\nState: ${item.state || "N/A"}\nAssigned: ${item.assignedTo || "Unassigned"}\nPriority: ${item.priority || "N/A"}\nArea: ${item.areaPath || "N/A"}\nIteration: ${item.iterationPath || "N/A"}${item.remainingWork != null ? `\nRemaining: ${item.remainingWork}h` : ""}${item.completedWork != null ? `\nCompleted: ${item.completedWork}h` : ""}${item.originalEstimate != null ? `\nEstimate: ${item.originalEstimate}h` : ""}${item.tags ? `\nTags: ${item.tags}` : ""}${item.description ? `\nDescription: ${item.description.replace(/<[^>]*>/g, "").substring(0, 200)}` : ""}`;
+        return `Work item #${item.id}:\nType: ${item.type}\nTitle: ${item.title}\nState: ${item.state || "N/A"}\nAssigned: ${item.assignedTo || "Unassigned"}\nPriority: ${item.priority || "N/A"}\nArea: ${item.areaPath || "N/A"}\nIteration: ${item.iterationPath || "N/A"}${item.remainingWork != null ? `\nRemaining: ${item.remainingWork}h` : ""}${item.completedWork != null ? `\nCompleted: ${item.completedWork}h` : ""}${item.originalEstimate != null ? `\nEstimate: ${item.originalEstimate}h` : ""}${item.tags ? `\nTags: ${item.tags}` : ""}${item.description ? `\nDescription: ${item.description.replace(/<[^>]*>/g, "")}` : ""}`;
       }
       case "create": {
         const cfg = vscode.workspace.getConfiguration("sprintbridge");
