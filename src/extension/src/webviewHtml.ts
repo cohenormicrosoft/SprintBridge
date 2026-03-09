@@ -67,7 +67,7 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
     .type-epic { background: #ff7b00; color: #fff; }
     .type-productbacklogitem { background: #0060a0; color: #fff; }
     .type-objective { background: #2e7d32; color: #fff; }
-    .type-keyresult { background: #1565c0; color: #fff; }
+    .type-keyresult { background: #6a1b9a; color: #fff; }
     .state-badge { padding: 1px 5px; border-radius: 3px; font-size: 10px; background: var(--badge-bg); color: var(--badge-fg); }
 
     /* Hierarchy */
