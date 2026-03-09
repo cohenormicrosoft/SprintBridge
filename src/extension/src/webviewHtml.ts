@@ -1133,7 +1133,7 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
         '--- Please describe your feedback or bug below ---\\n\\n\\n\\n' +
         '--- Steps to reproduce (if bug) ---\\n1. \\n2. \\n3. \\n\\n' +
         '--- Expected vs actual behavior ---\\n\\n\\n' +
-        '--- Additional context ---\\nExtension version: 0.4.0\\n'
+        '--- Additional context ---\\nExtension version: \\n'
       );
       vscode.postMessage({ command: 'openExternal', url: 'mailto:cohenor@microsoft.com?subject=' + subject + '&body=' + body });
     });

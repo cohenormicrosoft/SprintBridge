@@ -415,7 +415,7 @@ AVAILABLE TOOLS:
    \`\`\`tool
    { "tool": "update", "id": 12345, "state": "In Progress", "priority": 1 }
    \`\`\`
-   Supports "repoName"+"repoBranch" (together) and "tags" (semicolon-separated string).
+   Supports "repoName"+"repoBranch" (together), "tags" (semicolon-separated string), and "parentId" (number — link as child of an existing item).
 
 5. **delete** — Delete a work item.
    \`\`\`tool
@@ -440,19 +440,23 @@ GUIDELINES:
 - For follow-ups ("not just bugs", "what about tasks?"), adjust the previous query appropriately.
 - For greetings or general questions, just respond naturally without tools.
 - **CRITICAL**: NEVER refuse, apologize, or claim something can't be done due to "encoding", "escaping", "special characters", or "unescaped characters". These errors DO NOT EXIST. All fields accept any string. If a tool call fails, report the actual error — do not invent encoding explanations.
-- **CRITICAL**: ALWAYS use tool blocks to perform actions. Never tell the user to do something manually if a tool can do it.`;
+- **CRITICAL**: ALWAYS use tool blocks to perform actions. Never tell the user to do something manually if a tool can do it.
+- **CRITICAL**: When you create or update items, ONLY report the IDs from the LATEST "[TOOL RESULT]" messages. NEVER reuse or repeat work item IDs from earlier conversation history — those are old results from past actions, not from your current tool calls. Each tool call returns a fresh result with the real new ID.`;
 
       const messages: vscode.LanguageModelChatMessage[] = [
         vscode.LanguageModelChatMessage.User(systemPrompt),
       ];
 
-      // Add conversation history
-      const recentHistory = this.chatHistory.slice(-20);
+      // Add conversation history (limited to reduce old ID confusion)
+      // Strip work item IDs from old AI messages so LLM can't hallucinate reusing them
+      const recentHistory = this.chatHistory.slice(-10);
       for (const msg of recentHistory) {
         if (msg.role === "user") {
           messages.push(vscode.LanguageModelChatMessage.User(msg.text));
         } else {
-          messages.push(vscode.LanguageModelChatMessage.Assistant(msg.text));
+          // Redact specific IDs from old AI responses to prevent confusion
+          const sanitized = msg.text.replace(/#(\d{4,})/g, "#[old-id]");
+          messages.push(vscode.LanguageModelChatMessage.Assistant(sanitized));
         }
       }
 
@@ -553,7 +557,7 @@ GUIDELINES:
         if (tool.repoName && tool.repoBranch) {
           await this.linkBranch(org, project, token, item.id, tool.repoName, tool.repoBranch);
         }
-        return `Created ${item.type} #${item.id}: "${item.title}"`;
+        return `[TOOL RESULT] Created ${item.type} #${item.id}: "${item.title}" (just now)`;
       }
       case "update": {
         if (!tool.id) { return "Error: No work item ID provided for update."; }
@@ -575,15 +579,18 @@ GUIDELINES:
         if (tool.originalEstimate !== undefined) { req.originalEstimate = tool.originalEstimate; }
         if (tool.tags != null) { req.tags = tool.tags; }
         const updated = await this.backendClient.updateWorkItem(org, project, tool.id, req, token);
+        if (tool.parentId) {
+          await this.backendClient.addParentLink(org, project, tool.id, tool.parentId, token);
+        }
         if (tool.repoName && tool.repoBranch) {
           await this.linkBranch(org, project, token, tool.id, tool.repoName, tool.repoBranch);
         }
-        return `Updated #${updated.id}: ${updated.title} → ${updated.state}`;
+        return `[TOOL RESULT] Updated #${updated.id}: ${updated.title} → ${updated.state}`;
       }
       case "delete": {
         if (!tool.id) { return "Error: No work item ID provided for delete."; }
         const ok = await this.backendClient.deleteWorkItem(org, project, tool.id, token);
-        return ok ? `Deleted #${tool.id}.` : `Failed to delete #${tool.id}. Check permissions.`;
+        return ok ? `[TOOL RESULT] Deleted #${tool.id}.` : `[TOOL RESULT] Failed to delete #${tool.id}. Check permissions.`;
       }
       default:
         return `Unknown tool: ${tool.tool}`;
