@@ -49,6 +49,8 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
     .filters { padding: 8px 10px; border-bottom: 1px solid var(--border); display: flex; gap: 6px; flex-wrap: wrap; flex-shrink: 0; align-items: center; }
     .filter-select { background: var(--input-bg); color: var(--input-fg); border: 1px solid var(--input-border); padding: 4px 6px; font-size: 11px; border-radius: 3px; }
     .filter-input { background: var(--input-bg); color: var(--input-fg); border: 1px solid var(--input-border); padding: 4px 6px; font-size: 11px; border-radius: 3px; flex: 1; min-width: 80px; }
+    .collapse-all-btn { background: none; border: 1px solid var(--border); color: var(--fg); padding: 3px 8px; font-size: 10px; border-radius: 3px; cursor: pointer; opacity: 0.7; white-space: nowrap; font-family: inherit; }
+    .collapse-all-btn:hover { opacity: 1; border-color: var(--btn-bg); }
 
     /* Work item list */
     .work-item { padding: 6px 10px; border-bottom: 1px solid var(--border); cursor: pointer; }
@@ -63,6 +65,9 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
     .type-userstory { background: #009ccc; color: #fff; }
     .type-feature { background: #773b93; color: #fff; }
     .type-epic { background: #ff7b00; color: #fff; }
+    .type-productbacklogitem { background: #0060a0; color: #fff; }
+    .type-objective { background: #2e7d32; color: #fff; }
+    .type-keyresult { background: #1565c0; color: #fff; }
     .state-badge { padding: 1px 5px; border-radius: 3px; font-size: 10px; background: var(--badge-bg); color: var(--badge-fg); }
 
     /* Hierarchy */
@@ -258,6 +263,7 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
         <option value="Resolved">Resolved</option>
         <option value="Closed">Closed</option>
       </select>
+      <button class="collapse-all-btn" id="collapse-all" title="Collapse all hierarchy levels">▶ Collapse all</button>
     </div>
     <div class="panel-content" id="workitems-list">
       <div class="empty-state">Click a filter or sign in to load work items.</div>
@@ -568,6 +574,13 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
         });
       });
     }
+
+    // Collapse all hierarchy
+    document.getElementById('collapse-all').addEventListener('click', () => {
+      const container = document.getElementById('workitems-list');
+      container.querySelectorAll('.tree-children').forEach(el => { el.style.display = 'none'; });
+      container.querySelectorAll('.tree-toggle').forEach(btn => { btn.textContent = '▶'; });
+    });
 
     function showDetail(item) {
       document.getElementById('workitems-list').style.display = 'none';

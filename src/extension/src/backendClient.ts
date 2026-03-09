@@ -14,6 +14,7 @@ export interface WorkItem {
   createdDate?: string;
   changedDate?: string;
   parentId?: number;
+  childIds?: number[];
   remainingWork?: number;
   completedWork?: number;
   originalEstimate?: number;
@@ -70,6 +71,29 @@ export class BackendClient {
     } catch {
       return null;
     }
+  }
+
+  async getWorkItemsByIds(
+    organization: string,
+    project: string,
+    ids: number[],
+    token: string
+  ): Promise<WorkItem[]> {
+    if (ids.length === 0) { return []; }
+    const all: WorkItem[] = [];
+    for (let i = 0; i < ids.length; i += 200) {
+      const batch = ids.slice(i, i + 200);
+      try {
+        const json = await this.adoRequest(
+          "GET",
+          `/${organization}/${project}/_apis/wit/workitems?ids=${batch.join(",")}&$expand=all&api-version=${ADO_API_VERSION}`,
+          token
+        );
+        const values = json?.value;
+        if (values && Array.isArray(values)) { all.push(...values.map(mapWorkItem)); }
+      } catch { /* skip batch on error */ }
+    }
+    return all;
   }
 
   async createWorkItem(
@@ -173,18 +197,23 @@ export class BackendClient {
     const items = queryResult?.workItems;
     if (!items || !Array.isArray(items) || items.length === 0) { return []; }
 
-    const ids = items.slice(0, 50).map((wi: any) => wi.id);
-    const idsParam = ids.join(",");
-
-    const detailsJson = await this.adoRequest(
-      "GET",
-      `/${organization}/${project}/_apis/wit/workitems?ids=${idsParam}&$expand=all&api-version=${ADO_API_VERSION}`,
-      token
-    );
-
-    const values = detailsJson?.value;
-    if (!values || !Array.isArray(values)) { return []; }
-    return values.map(mapWorkItem);
+    // Fetch details in batches of 200 (ADO limit per request)
+    const allDetails: WorkItem[] = [];
+    const allIds = items.map((wi: any) => wi.id);
+    for (let i = 0; i < allIds.length; i += 200) {
+      const batch = allIds.slice(i, i + 200);
+      const idsParam = batch.join(",");
+      const detailsJson = await this.adoRequest(
+        "GET",
+        `/${organization}/${project}/_apis/wit/workitems?ids=${idsParam}&$expand=all&api-version=${ADO_API_VERSION}`,
+        token
+      );
+      const values = detailsJson?.value;
+      if (values && Array.isArray(values)) {
+        allDetails.push(...values.map(mapWorkItem));
+      }
+    }
+    return allDetails;
   }
 
   async addBranchLink(
@@ -410,13 +439,18 @@ function mapWorkItem(json: any): WorkItem {
   }
 
   let parentId: number | undefined;
+  const childIds: number[] = [];
   if (json.relations && Array.isArray(json.relations)) {
     for (const rel of json.relations) {
-      if (rel.rel === "System.LinkTypes.Hierarchy-Reverse" && rel.url) {
+      if (rel.url) {
         const lastSlash = rel.url.lastIndexOf("/");
-        if (lastSlash >= 0) {
-          const parsed = parseInt(rel.url.substring(lastSlash + 1), 10);
-          if (!isNaN(parsed)) { parentId = parsed; }
+        const linkedId = lastSlash >= 0 ? parseInt(rel.url.substring(lastSlash + 1), 10) : NaN;
+        if (!isNaN(linkedId)) {
+          if (rel.rel === "System.LinkTypes.Hierarchy-Reverse") {
+            parentId = linkedId;
+          } else if (rel.rel === "System.LinkTypes.Hierarchy-Forward") {
+            childIds.push(linkedId);
+          }
         }
       }
     }
@@ -436,6 +470,7 @@ function mapWorkItem(json: any): WorkItem {
     createdDate: fields["System.CreatedDate"] || undefined,
     changedDate: fields["System.ChangedDate"] || undefined,
     parentId,
+    childIds: childIds.length > 0 ? childIds : undefined,
     remainingWork: fields["Microsoft.VSTS.Scheduling.RemainingWork"] ?? undefined,
     completedWork: fields["Microsoft.VSTS.Scheduling.CompletedWork"] ?? undefined,
     originalEstimate: fields["Microsoft.VSTS.Scheduling.OriginalEstimate"] ?? undefined,

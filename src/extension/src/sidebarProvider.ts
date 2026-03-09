@@ -240,7 +240,48 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const wiql = `SELECT [System.Id], [System.Title], [System.State], [System.WorkItemType] FROM WorkItems WHERE ${where} ORDER BY [System.ChangedDate] DESC`;
 
     const items = await this.backendClient.queryWorkItems(org, project, wiql, token);
-    this.postMessage({ command: "workItemsLoaded", items });
+    // Fetch missing ancestors AND descendants for full hierarchy (up to 5 levels)
+    const enriched = await this.enrichHierarchy(org, project, token, items, 5);
+    this.postMessage({ command: "workItemsLoaded", items: enriched });
+  }
+
+  /** Fetch missing ancestors AND descendants so the tree renders full hierarchy. */
+  private async enrichHierarchy(
+    org: string, project: string, token: string,
+    items: import("./backendClient").WorkItem[], maxDepth: number
+  ): Promise<import("./backendClient").WorkItem[]> {
+    const allItems = [...items];
+    const knownIds = new Set(allItems.map(i => i.id));
+
+    for (let depth = 0; depth < maxDepth; depth++) {
+      const missingIds = new Set<number>();
+
+      for (const item of allItems) {
+        // Missing parents (UP)
+        if (item.parentId && !knownIds.has(item.parentId)) {
+          missingIds.add(item.parentId);
+        }
+        // Missing children (DOWN)
+        if (item.childIds) {
+          for (const childId of item.childIds) {
+            if (!knownIds.has(childId)) {
+              missingIds.add(childId);
+            }
+          }
+        }
+      }
+
+      if (missingIds.size === 0) { break; }
+
+      const fetched = await this.backendClient.getWorkItemsByIds(org, project, [...missingIds], token);
+      for (const item of fetched) {
+        if (!knownIds.has(item.id)) {
+          allItems.push(item);
+          knownIds.add(item.id);
+        }
+      }
+    }
+    return allItems;
   }
 
   private async handleGet(org: string, project: string, token: string, id: number): Promise<void> {
