@@ -264,6 +264,7 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
         <option value="Closed">Closed</option>
       </select>
       <button class="collapse-all-btn" id="collapse-all" title="Collapse all hierarchy levels">▶ Collapse all</button>
+      <button class="collapse-all-btn" id="refresh-workitems" title="Refresh work items">↻ Refresh</button>
     </div>
     <div class="panel-content" id="workitems-list">
       <div class="empty-state">Click a filter or sign in to load work items.</div>
@@ -405,7 +406,27 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
 
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
-    const state = vscode.getState() || { tab: 'workitems', chatHistory: [] };
+    const state = vscode.getState() || { tab: 'workitems', chatHistory: [], filters: {} };
+    if (!state.filters) state.filters = {};
+
+    // Restore saved filter values
+    (function restoreFilters() {
+      const f = state.filters;
+      if (f.areaPath) document.getElementById('filter-areapath').value = f.areaPath;
+      if (f.assignee) document.getElementById('filter-assignee').value = f.assignee;
+      if (f.type) document.getElementById('filter-type').value = f.type;
+      if (f.state) document.getElementById('filter-state').value = f.state;
+    })();
+
+    function saveFilters() {
+      state.filters = {
+        areaPath: document.getElementById('filter-areapath').value.trim(),
+        assignee: document.getElementById('filter-assignee').value,
+        type: document.getElementById('filter-type').value,
+        state: document.getElementById('filter-state').value
+      };
+      vscode.setState(state);
+    }
 
     // Build an ADO work item URL from current settings
     function adoUrl(id) {
@@ -480,31 +501,66 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
         vscode.setState(state);
 
         if (tab.dataset.tab === 'workitems') {
-          loadWorkItems();
+          loadWorkItemsIfNeeded();
         }
       });
     });
 
     // --- Work Items ---
     let areaPathDebounce;
-    function loadWorkItems() {
+    let lastAreaPath = null;
+    let cachedWorkItems = null;
+
+    function loadWorkItemsIfNeeded() {
       const areaPath = document.getElementById('filter-areapath').value.trim();
-      const assignee = document.getElementById('filter-assignee').value;
-      const type = document.getElementById('filter-type').value;
-      const stateFilter = document.getElementById('filter-state').value;
+      if (cachedWorkItems !== null && areaPath === lastAreaPath) return;
+      fetchWorkItems();
+    }
+
+    function fetchWorkItems() {
+      const areaPath = document.getElementById('filter-areapath').value.trim();
+      lastAreaPath = areaPath;
+      cachedWorkItems = null;
+      saveFilters();
       document.getElementById('workitems-list').innerHTML = '<div class="loading">Loading work items...</div>';
       document.getElementById('workitems-list').style.display = '';
       document.getElementById('workitem-detail').style.display = 'none';
-      vscode.postMessage({ command: 'queryWorkItems', areaPath, assignee, type, state: stateFilter });
+      vscode.postMessage({ command: 'queryWorkItems', areaPath, assignee: '', type: '', state: '' });
+    }
+
+    function applyClientFilters() {
+      if (!cachedWorkItems) return;
+      const assignee = document.getElementById('filter-assignee').value;
+      const type = document.getElementById('filter-type').value;
+      const stateFilter = document.getElementById('filter-state').value;
+      saveFilters();
+      let filtered = cachedWorkItems;
+      if (assignee === 'me') {
+        const email = (document.getElementById('settings-email') || {}).value || '';
+        filtered = filtered.filter(function(item) {
+          if (!email) return false;
+          const e = email.toLowerCase();
+          return (item.assignedToEmail && item.assignedToEmail.toLowerCase() === e) ||
+                 (item.assignedTo && item.assignedTo.toLowerCase().indexOf(e) !== -1);
+        });
+      }
+      if (type) { filtered = filtered.filter(function(item) { return item.type === type; }); }
+      if (stateFilter) { filtered = filtered.filter(function(item) { return item.state === stateFilter; }); }
+      renderWorkItems(filtered);
     }
 
     document.getElementById('filter-areapath').addEventListener('input', () => {
       clearTimeout(areaPathDebounce);
-      areaPathDebounce = setTimeout(loadWorkItems, 600);
+      areaPathDebounce = setTimeout(fetchWorkItems, 600);
     });
-    document.getElementById('filter-assignee').addEventListener('change', loadWorkItems);
-    document.getElementById('filter-type').addEventListener('change', loadWorkItems);
-    document.getElementById('filter-state').addEventListener('change', loadWorkItems);
+    document.getElementById('filter-assignee').addEventListener('change', applyClientFilters);
+    document.getElementById('filter-type').addEventListener('change', applyClientFilters);
+    document.getElementById('filter-state').addEventListener('change', applyClientFilters);
+
+    document.getElementById('refresh-workitems').addEventListener('click', () => {
+      cachedWorkItems = null;
+      fetchWorkItems();
+    });
 
     function buildTree(items) {
       const map = {};
@@ -1014,7 +1070,8 @@ export function getWebviewHtml(nonce: string, cspSource: string, iconUri: string
           showMain(msg.organization, msg.project, msg.areaPath, msg.userEmail);
           break;
         case 'workItemsLoaded':
-          renderWorkItems(msg.items);
+          cachedWorkItems = msg.items;
+          applyClientFilters();
           break;
         case 'workItemLoaded':
           showDetail(msg.item);

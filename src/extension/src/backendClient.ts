@@ -6,6 +6,7 @@ export interface WorkItem {
   title: string;
   description?: string;
   assignedTo?: string;
+  assignedToEmail?: string;
   state?: string;
   areaPath?: string;
   iterationPath?: string;
@@ -432,8 +433,10 @@ function mapWorkItem(json: any): WorkItem {
   const fields = json.fields || {};
   const assignedTo = fields["System.AssignedTo"];
   let assignedToStr: string | undefined;
+  let assignedToEmail: string | undefined;
   if (assignedTo && typeof assignedTo === "object") {
     assignedToStr = assignedTo.displayName || assignedTo.uniqueName;
+    assignedToEmail = assignedTo.uniqueName;
   } else if (typeof assignedTo === "string") {
     assignedToStr = assignedTo;
   }
@@ -462,6 +465,7 @@ function mapWorkItem(json: any): WorkItem {
     title: fields["System.Title"] || "",
     description: fields["System.Description"] || undefined,
     assignedTo: assignedToStr,
+    assignedToEmail,
     state: fields["System.State"] || undefined,
     areaPath: fields["System.AreaPath"] || undefined,
     iterationPath: fields["System.IterationPath"] || undefined,
